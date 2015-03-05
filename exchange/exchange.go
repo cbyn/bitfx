@@ -2,6 +2,10 @@
 
 package exchange
 
+import (
+	"time"
+)
+
 // Exchange methods for data and trading ***************************************
 type Exchange interface {
 	String() string
@@ -9,8 +13,7 @@ type Exchange interface {
 	Fee() float64
 	SetPosition(float64)
 	Position() float64
-	UpdateBook(entries int) error
-	Book() Book
+	BookChan(doneChan <-chan bool) (<-chan Book, error)
 	SendOrder(action, otype string, amount, price float64) (int64, error)
 	CancelOrder(id int64) (bool, error)
 	GetOrderStatus(id int64) (Order, error)
@@ -24,8 +27,11 @@ type Order struct {
 
 // Book data from the exchange *************************************************
 type Book struct {
-	Bids BidItems // Sort by price high to low
-	Asks AskItems // Sort by price low to high
+	Exg   Exchange
+	Time  time.Time
+	Bids  BidItems // Sort by price high to low
+	Asks  AskItems // Sort by price low to high
+	Error error
 }
 
 // BidItems data from the exchange

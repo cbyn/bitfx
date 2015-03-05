@@ -3,28 +3,46 @@
 package okcoin
 
 import (
-	"bitfx/exchange"
+	"bitfx2/exchange"
 	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/net/websocket"
 	"io/ioutil"
 	"math"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
 
-// URL for API
-const URL = "https://www.okcoin.com/api/v1/"
+const (
+	websocketURL = "wss://real.okcoin.com:10440/websocket/okcoinapi"
+	restURL      = "https://www.okcoin.com/api/v1/"
+	origin       = "http://localhost/"
+)
 
 // OKCoin exchange information
 type OKCoin struct {
 	key, secret, symbol, currency string
 	priority                      int
 	position, fee                 float64
-	book                          exchange.Book
+}
+
+// Exchange request format
+type request struct {
+	Event      string            `json:"event"`      // Event to request
+	Channel    string            `json:"channel"`    // Channel on which to make request
+	Parameters map[string]string `json:"parameters"` // Additional parameters
+}
+
+// Exchange response format
+type response []struct {
+	Channel   string          `json:"channel"`          // Channel name
+	ErrorCode int64           `json:"errorcode,string"` // Error code if not successful
+	Data      json.RawMessage `json:"data"`             // Data specific to channel
 }
 
 // New returns a pointer to a new OKCoin instance
@@ -64,46 +82,107 @@ func (ok *OKCoin) Position() float64 {
 	return ok.position
 }
 
-// Book getter method
-func (ok *OKCoin) Book() exchange.Book {
-	return ok.book
+// TODO: Incorporate heartbeat
+
+// BookChan returns a channel that receives the latest available book data
+func (ok *OKCoin) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
+	// Channel to return
+	bookChan := make(chan exchange.Book)
+
+	// Connect to websocket
+	ws, err := websocket.Dial(websocketURL, "", origin)
+	if err != nil {
+		return bookChan, err
+	}
+
+	// Send request for book data
+	channel := fmt.Sprintf("ok_%s%s_depth", ok.symbol, ok.currency)
+	message, err := json.Marshal(request{Event: "addChannel", Channel: channel})
+	if err != nil {
+		return bookChan, err
+	}
+	_, err = ws.Write(message)
+	if err != nil {
+		return bookChan, err
+	}
+
+	// Run infinite read loop sending results to bookChan
+	go func() {
+	Loop:
+		for {
+			// Break if notified on doneChan
+			select {
+			case <-doneChan:
+				ws.Close()
+				close(bookChan)
+				break Loop
+			default:
+				bookChan <- ok.readBook(ws)
+			}
+		}
+	}()
+
+	return bookChan, nil
 }
 
-// UpdateBook updates the cached order book
-func (ok *OKCoin) UpdateBook(entries int) error {
-	var book exchange.Book
+// Read book data from websocket
+func (ok *OKCoin) readBook(ws *websocket.Conn) exchange.Book {
+	book := exchange.Book{Exg: ok}
 
-	url := fmt.Sprintf("%sdepth.do?symbol=%s_%s&size=%d", URL, ok.symbol, ok.currency, entries)
-	data, err := get(url)
+	// Read from websocket
+	msg := make([]byte, 4096)
+	n, err := ws.Read(msg)
 	if err != nil {
-		return errors.New("OKCoin UpdateBook error: " + err.Error())
+		book.Error = fmt.Errorf("OKCoin book error: %s", err.Error())
+		book.Time = time.Now()
+		return book
 	}
 
+	// Unmarshal into response
+	var resp response
+	err = json.Unmarshal(msg[:n], &resp)
+	if err != nil {
+		book.Error = fmt.Errorf("OKCoin book error: %s", err.Error())
+		book.Time = time.Now()
+		return book
+	}
+	if resp[0].ErrorCode != 0 {
+		book.Error = fmt.Errorf("OKCoin book error code: %d", resp[0].ErrorCode)
+		book.Time = time.Now()
+		return book
+	}
+
+	// Book structure from the exchange
 	var tmp struct {
-		Bids [][2]float64 `json:"bids"`
-		Asks [][2]float64 `json:"asks"`
+		Bids       [][2]float64 `json:"bids"`             // Slice of bid data items
+		Asks       [][2]float64 `json:"asks"`             // Slice of ask data items
+		Timestamp  int64        `json:"timestamp,string"` // Timestamp
+		UnitAmount int          `json:"unit_amount"`      // Unit amount for futures
 	}
 
-	err = json.Unmarshal(data, &tmp)
+	// Unmarshal response.Data into intermediate structure
+	err = json.Unmarshal(resp[0].Data, &tmp)
 	if err != nil {
-		return err
+		book.Error = fmt.Errorf("OKCoin book error: %s", err.Error())
+		book.Time = time.Now()
+		return book
 	}
 
-	book.Bids = make(exchange.BidItems, entries, entries)
-	book.Asks = make(exchange.AskItems, entries, entries)
-	for i := 0; i < entries; i++ {
+	// Translate into exchange.Book structure
+	book.Bids = make(exchange.BidItems, 20)
+	book.Asks = make(exchange.AskItems, 20)
+	for i := 0; i < 20; i++ {
 		book.Bids[i].Price = tmp.Bids[i][0]
 		book.Bids[i].Amount = tmp.Bids[i][1]
 		book.Asks[i].Price = tmp.Asks[i][0]
 		book.Asks[i].Amount = tmp.Asks[i][1]
 	}
-
 	sort.Sort(book.Bids)
 	sort.Sort(book.Asks)
 
-	ok.book = book
-
-	return nil
+	book.Error = nil
+	book.Time = time.Now()
+	return book
 }
 
 // SendOrder to the exchange
@@ -120,7 +199,7 @@ func (ok *OKCoin) SendOrder(action, otype string, amount, price float64) (int64,
 	params["amount"] = fmt.Sprintf("%f", amount)
 
 	// Send post request
-	data, err := ok.post(URL+"trade.do", params)
+	data, err := ok.post(restURL+"trade.do", params)
 	if err != nil {
 		return 0, errors.New("OKCoin SendOrder error: " + err.Error())
 	}
@@ -149,7 +228,7 @@ func (ok *OKCoin) CancelOrder(id int64) (bool, error) {
 	params["order_id"] = fmt.Sprintf("%d", id)
 
 	// Send post request
-	data, err := ok.post(URL+"cancel_order.do", params)
+	data, err := ok.post(restURL+"cancel_order.do", params)
 	if err != nil {
 		return false, errors.New("OKCoin CancelOrder error: " + err.Error())
 	}
@@ -181,7 +260,7 @@ func (ok *OKCoin) GetOrderStatus(id int64) (exchange.Order, error) {
 	var order exchange.Order
 
 	// Send post request
-	data, err := ok.post(URL+"order_info.do", params)
+	data, err := ok.post(restURL+"order_info.do", params)
 	if err != nil {
 		return order, errors.New("OKCoin GetOrderStatus error: " + err.Error())
 	}
@@ -214,7 +293,7 @@ func (ok *OKCoin) GetOrderStatus(id int64) (exchange.Order, error) {
 
 }
 
-func (ok *OKCoin) post(stringURL string, params map[string]string) ([]byte, error) {
+func (ok *OKCoin) post(stringrestURL string, params map[string]string) ([]byte, error) {
 	// Make url.Values from params
 	values := url.Values{}
 	for param, value := range params {
@@ -232,7 +311,7 @@ func (ok *OKCoin) post(stringURL string, params map[string]string) ([]byte, erro
 	values.Set("sign", strings.ToUpper(fmt.Sprintf("%x", sum)))
 
 	// Send post request
-	resp, err := http.PostForm(stringURL, values)
+	resp, err := http.PostForm(stringrestURL, values)
 	if err != nil {
 		return []byte{}, err
 	}
