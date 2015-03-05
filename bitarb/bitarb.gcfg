@@ -1,0 +1,11 @@
+[sec]
+symbol      = "btc" # Symbol to trade
+currency    = "usd" # Underlying currency
+entries     = 20 # Number of book entries to request
+entryArb    = .75 # Min arb amount to enter a position
+exitArb     = -.5 # Min arb amount to exit a position
+maxPosition = .03 # Max position size on any exchange
+minNetPos   = .01 # Min acceptable net position
+minOrder    = .01 # Min order size for arb trade
+maxOrder    = .06 # Max order size for arb trade
+printBook   = false # Print book data?
