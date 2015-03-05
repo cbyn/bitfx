@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"golang.org/x/net/websocket"
 	"io/ioutil"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -108,8 +109,29 @@ func (ok *OKCoin) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
 
 	// Run infinite read loop sending results to bookChan
 	go func() {
+		// Start heartbeat timer
+		lastCheck := time.Now()
 	Loop:
 		for {
+			// Check connection
+			if time.Since(lastCheck) > 30*time.Second {
+				isLive, err := heartbeat(ws)
+				if !isLive || err != nil {
+					// TODO: handle errors?
+					log.Println("OKCoin BookChan lost connection to websocket")
+					ws, err = websocket.Dial(websocketURL, "", origin)
+					if err != nil {
+						log.Printf("OKCoin BookChan reconnect error: %s\n", err.Error())
+					} else {
+						_, err = ws.Write(message)
+						if err != nil {
+							log.Printf("OKCoin BookChan reconnect error: %s\n", err.Error())
+						}
+					}
+				}
+				lastCheck = time.Now()
+			}
+
 			// Break if notified on doneChan
 			select {
 			case <-doneChan:
@@ -123,6 +145,31 @@ func (ok *OKCoin) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
 	}()
 
 	return bookChan, nil
+}
+
+// Check websocket connection
+func heartbeat(ws *websocket.Conn) (bool, error) {
+	// Send ping
+	_, err := ws.Write([]byte("{'event':'ping'}"))
+	if err != nil {
+		return false, err
+	}
+
+	// Read response
+	msg := make([]byte, 512)
+	n, err := ws.Read(msg)
+	if err != nil {
+		return false, err
+	}
+	var req request
+	json.Unmarshal(msg[:n], &req)
+
+	// Connection is ok if pong is returned
+	if req.Event == "pong" {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // Read book data from websocket

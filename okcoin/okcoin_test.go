@@ -43,6 +43,7 @@ func TestBookChan(t *testing.T) {
 	go func() {
 		time.Sleep(5 * time.Second)
 		doneChan <- true
+		t.Logf("Notified doneChan")
 	}()
 
 	for book := range bookChan {
