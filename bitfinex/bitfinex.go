@@ -3,7 +3,7 @@
 package bitfinex
 
 import (
-	"bitfx/exchange"
+	"bitfx2/exchange"
 	"crypto/hmac"
 	"crypto/sha512"
 	"encoding/base64"
@@ -27,7 +27,6 @@ type Bitfinex struct {
 	key, secret, symbol, currency string
 	priority                      int
 	position, fee                 float64
-	book                          exchange.Book
 }
 
 // New returns a pointer to a new Bitfinex instance
@@ -67,19 +66,36 @@ func (bf *Bitfinex) Position() float64 {
 	return bf.position
 }
 
-// Book getter method
-func (bf *Bitfinex) Book() exchange.Book {
-	return bf.book
+// BookChan returns a channel that receives the latest available book data
+func (bf *Bitfinex) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
+	// Returned for external communication
+	bookChan := make(chan exchange.Book)
+
+	// Run infinite loop in new goroutine
+	go func() {
+	Loop:
+		for {
+			select {
+			case <-doneChan:
+				close(bookChan)
+				break Loop
+			default:
+				bookChan <- bf.getBook()
+			}
+		}
+	}()
+
+	// Return channel
+	return bookChan, nil
 }
 
-// UpdateBook updates the cached order book
-func (bf *Bitfinex) UpdateBook(entries int) error {
-	var book exchange.Book
-
-	url := fmt.Sprintf("%sbook/%s%s?limit_bids=%d&limit_asks=%d", URL, bf.symbol, bf.currency, entries, entries)
+// Get book data with an http request
+func (bf *Bitfinex) getBook() exchange.Book {
+	// Send get request
+	url := fmt.Sprintf("%sbook/%s%s?limit_bids=%d&limit_asks=%d", URL, bf.symbol, bf.currency, 20, 20)
 	data, err := get(url)
 	if err != nil {
-		return errors.New("Bitfinex UpdateBook error: " + err.Error())
+		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}
 	}
 
 	var tmp struct {
@@ -93,26 +109,30 @@ func (bf *Bitfinex) UpdateBook(entries int) error {
 		} `json:"asks"`
 	}
 
-	err = json.Unmarshal(data, &tmp)
-	if err != nil {
-		return err
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}
 	}
 
-	book.Bids = make(exchange.BidItems, entries, entries)
-	book.Asks = make(exchange.AskItems, entries, entries)
-	for i := 0; i < entries; i++ {
-		book.Bids[i].Price = tmp.Bids[i].Price
-		book.Bids[i].Amount = tmp.Bids[i].Amount
-		book.Asks[i].Price = tmp.Asks[i].Price
-		book.Asks[i].Amount = tmp.Asks[i].Amount
+	bids := make(exchange.BidItems, 20)
+	asks := make(exchange.AskItems, 20)
+	for i := 0; i < 20; i++ {
+		bids[i].Price = tmp.Bids[i].Price
+		bids[i].Amount = tmp.Bids[i].Amount
+		asks[i].Price = tmp.Asks[i].Price
+		asks[i].Amount = tmp.Asks[i].Amount
 	}
 
-	sort.Sort(book.Bids)
-	sort.Sort(book.Asks)
+	sort.Sort(bids)
+	sort.Sort(asks)
 
-	bf.book = book
-
-	return nil
+	// Return book
+	return exchange.Book{
+		Exg:   bf,
+		Time:  time.Now(),
+		Bids:  bids,
+		Asks:  asks,
+		Error: nil,
+	}
 }
 
 // SendOrder to the exchange
