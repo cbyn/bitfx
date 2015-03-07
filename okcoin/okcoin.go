@@ -128,20 +128,24 @@ func (ok *OKCoin) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
 			case result := <-wsChan:
 				bookChan <- convertToBook(result, ok)
 			// If timeout, check connection
-			case <-time.After(30 * time.Second):
+			case <-time.After(5 * time.Second):
 				// Send heartbeat
-				if _, err := ws.Write([]byte("{'event':'ping'}")); err != nil {
+				if _, err := ws.Write([]byte(`{"event":"ping"}`)); err != nil {
 					// Reconnect on write error
+					fmt.Println("write error")
 					ws, wsChan = reconnect(ws, initMessage)
 				}
 				select {
 				case result := <-wsChan:
-					if string(result.message) != "{'event':'pong'}" {
+					fmt.Println(string(result.message))
+					if string(result.message) != `{"event":"pong"}` {
 						// Reconnect on anything other than a returned pong
+						fmt.Println("pong not received")
 						ws, wsChan = reconnect(ws, initMessage)
 					}
 				case <-time.After(5 * time.Second):
 					// Reconnect on timeout
+					fmt.Println("timeout")
 					ws, wsChan = reconnect(ws, initMessage)
 				}
 			}
@@ -154,6 +158,7 @@ func (ok *OKCoin) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
 
 // Read from websocket
 func readWS(ws *websocket.Conn, wsChan chan<- wsResult) {
+	fmt.Println("waiting to read")
 	// Read from websocket
 	message := make([]byte, 4096)
 	n, err := ws.Read(message)
@@ -213,10 +218,9 @@ func convertToBook(result wsResult, exg exchange.Exchange) exchange.Book {
 
 // Reconnect to websocket
 func reconnect(ws *websocket.Conn, initMessage []byte) (*websocket.Conn, chan wsResult) {
+	fmt.Println("reconnecting")
 	// Close old websocket
 	ws.Close()
-	// Make new channel
-	wsChan := make(chan wsResult)
 	// Connect to new websocket
 	ws, err := websocket.Dial(websocketURL, "", origin)
 	// Keep trying on error
@@ -228,7 +232,7 @@ func reconnect(ws *websocket.Conn, initMessage []byte) (*websocket.Conn, chan ws
 		}
 	}
 
-	return ws, wsChan
+	return ws, make(chan wsResult)
 }
 
 // SendOrder to the exchange
