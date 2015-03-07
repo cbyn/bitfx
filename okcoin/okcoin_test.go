@@ -2,11 +2,13 @@ package okcoin
 
 import (
 	// "github.com/davecgh/go-spew/spew"
+	"bitfx2/exchange"
 	"os"
 	"testing"
 	"time"
 )
 
+var book exchange.Book
 var ok = New(os.Getenv("OKCOIN_KEY"), os.Getenv("OKCOIN_SECRET"), "ltc", "usd", 1, 0.002)
 
 func TestPriority(t *testing.T) {
@@ -46,7 +48,7 @@ func TestBookChan(t *testing.T) {
 		t.Logf("Notified doneChan")
 	}()
 
-	for book := range bookChan {
+	for book = range bookChan {
 		t.Logf("Received book data")
 		// spew.Dump(book)
 		if len(book.Bids) != 20 || len(book.Asks) != 20 {
@@ -61,68 +63,68 @@ func TestBookChan(t *testing.T) {
 	}
 }
 
-// func TestNewOrder(t *testing.T) {
-// 	action := "buy"
-// 	otype := "limit"
-// 	amount := 0.1
-// 	price := ok.Book().Bids[0].Price - 0.20
-//
-// 	// Test submitting a new order
-// 	id, err := ok.SendOrder(action, otype, amount, price)
-// 	if err != nil || id == 0 {
-// 		t.Fatal(err)
-// 	}
-// 	t.Logf("Placed a new buy order of 0.1 ltc_usd @ %v limit with ID: %d", price, id)
-//
-// 	// Check status
-// 	order, err := ok.GetOrderStatus(id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if order.Status != "live" {
-// 		t.Fatal("Order should be live")
-// 	}
-// 	t.Logf("Order confirmed live")
-// 	if order.FilledAmount != 0 {
-// 		t.Fatal("Order should not be filled")
-// 	}
-// 	t.Logf("Order confirmed unfilled")
-//
-// 	// Test cancelling the order
-// 	success, err := ok.CancelOrder(id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if !success {
-// 		t.Fatal("Order not cancelled")
-// 	}
-// 	t.Logf("Sent cancellation")
-//
-// 	// Check status
-// 	tryAgain := true
-// 	for tryAgain {
-// 		t.Logf("checking status...")
-// 		order, err = ok.GetOrderStatus(id)
-// 		tryAgain = order.Status == ""
-// 	}
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if order.Status != "dead" {
-// 		t.Fatal("Order should be dead after cancel")
-// 	}
-// 	t.Logf("Order confirmed dead")
-// 	if order.FilledAmount != 0 {
-// 		t.Fatal("Order should not be filled")
-// 	}
-// 	t.Logf("Order confirmed unfilled")
-//
-// 	// Test bad order
-// 	id, err = ok.SendOrder("kill", otype, amount, price)
-// 	if id != 0 {
-// 		t.Fatal("Expected id = 0")
-// 	}
-// 	if err.Error() != "OKCoin SendOrder error code: 10008" {
-// 		t.Fatal("Expected error 'OKCoin SendOrder error code: 10008' on bad order")
-// 	}
-// }
+func TestNewOrder(t *testing.T) {
+	action := "buy"
+	otype := "limit"
+	amount := 0.1
+	price := book.Bids[0].Price - 0.20
+
+	// Test submitting a new order
+	id, err := ok.SendOrder(action, otype, amount, price)
+	if err != nil || id == 0 {
+		t.Fatal(err)
+	}
+	t.Logf("Placed a new buy order of 0.1 ltc_usd @ %v limit with ID: %d", price, id)
+
+	// Check status
+	order, err := ok.GetOrderStatus(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.Status != "live" {
+		t.Fatal("Order should be live")
+	}
+	t.Logf("Order confirmed live")
+	if order.FilledAmount != 0 {
+		t.Fatal("Order should not be filled")
+	}
+	t.Logf("Order confirmed unfilled")
+
+	// Test cancelling the order
+	success, err := ok.CancelOrder(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !success {
+		t.Fatal("Order not cancelled")
+	}
+	t.Logf("Sent cancellation")
+
+	// Check status
+	tryAgain := true
+	for tryAgain {
+		t.Logf("checking status...")
+		order, err = ok.GetOrderStatus(id)
+		tryAgain = order.Status == ""
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.Status != "dead" {
+		t.Fatal("Order should be dead after cancel")
+	}
+	t.Logf("Order confirmed dead")
+	if order.FilledAmount != 0 {
+		t.Fatal("Order should not be filled")
+	}
+	t.Logf("Order confirmed unfilled")
+
+	// Test bad order
+	id, err = ok.SendOrder("kill", otype, amount, price)
+	if id != 0 {
+		t.Fatal("Expected id = 0")
+	}
+	if err.Error() != "OKCoin SendOrder error code: 10008" {
+		t.Fatal("Expected error 'OKCoin SendOrder error code: 10008' on bad order")
+	}
+}

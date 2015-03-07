@@ -2,11 +2,13 @@ package bitfinex
 
 import (
 	// "github.com/davecgh/go-spew/spew"
+	"bitfx2/exchange"
 	"os"
 	"testing"
 	"time"
 )
 
+var book exchange.Book
 var bf = New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), "ltc", "usd", 2, 0.001)
 
 func TestPriority(t *testing.T) {
@@ -46,7 +48,7 @@ func TestBookChan(t *testing.T) {
 		t.Logf("Notified doneChan")
 	}()
 
-	for book := range bookChan {
+	for book = range bookChan {
 		t.Logf("Received book data")
 		// spew.Dump(book)
 		if len(book.Bids) != 20 || len(book.Asks) != 20 {
@@ -61,68 +63,68 @@ func TestBookChan(t *testing.T) {
 	}
 }
 
-// func TestNewOrder(t *testing.T) {
-// 	action := "sell"
-// 	otype := "limit"
-// 	amount := 0.1
-// 	price := bf.Book().Asks[0].Price + 0.10
-//
-// 	// Test submitting a new order
-// 	id, err := bf.SendOrder(action, otype, amount, price)
-// 	if err != nil || id == 0 {
-// 		t.Fatal(err)
-// 	}
-// 	t.Logf("Placed a new sell order of 0.1 ltcusd @ %v limit with ID: %d", price, id)
-//
-// 	// Check status
-// 	order, err := bf.GetOrderStatus(id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if order.Status != "live" {
-// 		t.Fatal("Order should be live")
-// 	}
-// 	t.Logf("Order confirmed live")
-// 	if order.FilledAmount != 0 {
-// 		t.Fatal("Order should not be filled")
-// 	}
-// 	t.Logf("Order confirmed unfilled")
-//
-// 	// Test cancelling the order
-// 	success, err := bf.CancelOrder(id)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if !success {
-// 		t.Fatal("Order not cancelled")
-// 	}
-// 	t.Logf("Sent cancellation")
-//
-// 	// Check status
-// 	tryAgain := true
-// 	for tryAgain {
-// 		t.Logf("checking status...")
-// 		order, err = bf.GetOrderStatus(id)
-// 		tryAgain = order.Status == ""
-// 	}
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if order.Status != "dead" {
-// 		t.Fatal("Order should be dead after cancel")
-// 	}
-// 	t.Logf("Order confirmed dead")
-// 	if order.FilledAmount != 0 {
-// 		t.Fatal("Order should not be filled")
-// 	}
-// 	t.Logf("Order confirmed unfilled")
-//
-// 	// Test bad order
-// 	id, err = bf.SendOrder("kill", otype, amount, price)
-// 	if id != 0 {
-// 		t.Fatal("Expected id = 0")
-// 	}
-// 	if err.Error() != "Bitfinex SendOrder error: Order side must be either 'buy' or 'sell'." {
-// 		t.Fatal("Expected error 'Bitfinex SendOrder error: Order side must be either 'buy' or 'sell'.' on bad order")
-// 	}
-// }
+func TestNewOrder(t *testing.T) {
+	action := "sell"
+	otype := "limit"
+	amount := 0.1
+	price := book.Asks[0].Price + 0.10
+
+	// Test submitting a new order
+	id, err := bf.SendOrder(action, otype, amount, price)
+	if err != nil || id == 0 {
+		t.Fatal(err)
+	}
+	t.Logf("Placed a new sell order of 0.1 ltcusd @ %v limit with ID: %d", price, id)
+
+	// Check status
+	order, err := bf.GetOrderStatus(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.Status != "live" {
+		t.Fatal("Order should be live")
+	}
+	t.Logf("Order confirmed live")
+	if order.FilledAmount != 0 {
+		t.Fatal("Order should not be filled")
+	}
+	t.Logf("Order confirmed unfilled")
+
+	// Test cancelling the order
+	success, err := bf.CancelOrder(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !success {
+		t.Fatal("Order not cancelled")
+	}
+	t.Logf("Sent cancellation")
+
+	// Check status
+	tryAgain := true
+	for tryAgain {
+		t.Logf("checking status...")
+		order, err = bf.GetOrderStatus(id)
+		tryAgain = order.Status == ""
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.Status != "dead" {
+		t.Fatal("Order should be dead after cancel")
+	}
+	t.Logf("Order confirmed dead")
+	if order.FilledAmount != 0 {
+		t.Fatal("Order should not be filled")
+	}
+	t.Logf("Order confirmed unfilled")
+
+	// Test bad order
+	id, err = bf.SendOrder("kill", otype, amount, price)
+	if id != 0 {
+		t.Fatal("Expected id = 0")
+	}
+	if err.Error() != "Bitfinex SendOrder error: Order side must be either 'buy' or 'sell'." {
+		t.Fatal("Expected error 'Bitfinex SendOrder error: Order side must be either 'buy' or 'sell'.' on bad order")
+	}
+}
