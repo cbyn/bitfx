@@ -107,8 +107,7 @@ func (ok *OKCoin) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
 	if err != nil {
 		return bookChan, err
 	}
-	_, err = ws.Write(initMessage)
-	if err != nil {
+	if _, err = ws.Write(initMessage); err != nil {
 		return bookChan, err
 	}
 
@@ -256,8 +255,7 @@ func (ok *OKCoin) SendOrder(action, otype string, amount, price float64) (int64,
 		ID        int64 `json:"order_id"`
 		ErrorCode int64 `json:"error_code"`
 	}
-	err = json.Unmarshal(data, &response)
-	if err != nil {
+	if err := json.Unmarshal(data, &response); err != nil {
 		return 0, errors.New("OKCoin SendOrder error: " + err.Error())
 	}
 	if response.ErrorCode != 0 {
@@ -285,8 +283,7 @@ func (ok *OKCoin) CancelOrder(id int64) (bool, error) {
 		Result    bool  `json:"result"`
 		ErrorCode int64 `json:"error_code"`
 	}
-	err = json.Unmarshal(data, &response)
-	if err != nil {
+	if err := json.Unmarshal(data, &response); err != nil {
 		return false, errors.New("OKCoin CancelOrder error: " + err.Error())
 	}
 	if response.ErrorCode != 0 {
@@ -320,8 +317,7 @@ func (ok *OKCoin) GetOrderStatus(id int64) (exchange.Order, error) {
 		} `json:"orders"`
 		ErrorCode int64 `json:"error_code"`
 	}
-	err = json.Unmarshal(data, &response)
-	if err != nil {
+	if err := json.Unmarshal(data, &response); err != nil {
 		return order, errors.New("OKCoin GetOrderStatus error: " + err.Error())
 	}
 	if response.ErrorCode != 0 {
