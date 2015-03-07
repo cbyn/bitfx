@@ -48,6 +48,7 @@ func TestBookChan(t *testing.T) {
 
 	for book := range bookChan {
 		t.Logf("Received book data")
+		// spew.Dump(book)
 		if len(book.Bids) != 20 || len(book.Asks) != 20 {
 			t.Fatal("Expected 20 book entries")
 		}

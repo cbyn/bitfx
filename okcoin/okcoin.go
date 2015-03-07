@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"golang.org/x/net/websocket"
 	"io/ioutil"
-	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -44,6 +43,12 @@ type response []struct {
 	Channel   string          `json:"channel"`          // Channel name
 	ErrorCode int64           `json:"errorcode,string"` // Error code if not successful
 	Data      json.RawMessage `json:"data"`             // Data specific to channel
+}
+
+// Result from a websocket Read()
+type wsResult struct {
+	message []byte
+	err     error
 }
 
 // New returns a pointer to a new OKCoin instance
@@ -83,12 +88,12 @@ func (ok *OKCoin) Position() float64 {
 	return ok.position
 }
 
-// TODO: Incorporate heartbeat
-
 // BookChan returns a channel that receives the latest available book data
 func (ok *OKCoin) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
-	// Channel to return
+	// Returned for external communication
 	bookChan := make(chan exchange.Book)
+	// Used for internal websocket communication
+	wsChan := make(chan wsResult)
 
 	// Connect to websocket
 	ws, err := websocket.Dial(websocketURL, "", origin)
@@ -98,105 +103,78 @@ func (ok *OKCoin) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
 
 	// Send request for book data
 	channel := fmt.Sprintf("ok_%s%s_depth", ok.symbol, ok.currency)
-	message, err := json.Marshal(request{Event: "addChannel", Channel: channel})
+	initMessage, err := json.Marshal(request{Event: "addChannel", Channel: channel})
 	if err != nil {
 		return bookChan, err
 	}
-	_, err = ws.Write(message)
+	_, err = ws.Write(initMessage)
 	if err != nil {
 		return bookChan, err
 	}
 
-	// Run infinite read loop sending results to bookChan
+	// Run infinite loop in new goroutine
 	go func() {
-		// Start heartbeat timer
-		lastCheck := time.Now()
 	Loop:
 		for {
-			// Check connection
-			if time.Since(lastCheck) > 30*time.Second {
-				isLive, err := heartbeat(ws)
-				if !isLive || err != nil {
-					// TODO: handle errors?
-					log.Println("OKCoin BookChan lost connection to websocket")
-					ws, err = websocket.Dial(websocketURL, "", origin)
-					if err != nil {
-						log.Printf("OKCoin BookChan reconnect error: %s\n", err.Error())
-					} else {
-						_, err = ws.Write(message)
-						if err != nil {
-							log.Printf("OKCoin BookChan reconnect error: %s\n", err.Error())
-						}
-					}
-				}
-				lastCheck = time.Now()
-			}
+			// Attempt to read from websocket without blocking
+			go readWS(ws, wsChan)
 
-			// Break if notified on doneChan
 			select {
+			// End if notified on doneChan
 			case <-doneChan:
 				ws.Close()
 				close(bookChan)
 				break Loop
-			default:
-				bookChan <- ok.readBook(ws)
+			// If readWS completes, convert it to an exchange.Book and send out
+			case result := <-wsChan:
+				bookChan <- convertToBook(result, ok)
+			// If timeout, check connection
+			case <-time.After(30 * time.Second):
+				// Send heartbeat
+				if _, err := ws.Write([]byte("{'event':'ping'}")); err != nil {
+					// Reconnect on write error
+					ws, wsChan = reconnect(ws, initMessage)
+				}
+				select {
+				case result := <-wsChan:
+					if string(result.message) != "{'event':'pong'}" {
+						// Reconnect on anything other than a returned pong
+						ws, wsChan = reconnect(ws, initMessage)
+					}
+				case <-time.After(5 * time.Second):
+					// Reconnect on timeout
+					ws, wsChan = reconnect(ws, initMessage)
+				}
 			}
 		}
 	}()
 
+	// Return channel
 	return bookChan, nil
 }
 
-// Check websocket connection
-func heartbeat(ws *websocket.Conn) (bool, error) {
-	// Send ping
-	_, err := ws.Write([]byte("{'event':'ping'}"))
-	if err != nil {
-		return false, err
-	}
+// Read from websocket
+func readWS(ws *websocket.Conn, wsChan chan<- wsResult) {
+	// Read from websocket
+	message := make([]byte, 4096)
+	n, err := ws.Read(message)
 
-	// Read response
-	msg := make([]byte, 512)
-	n, err := ws.Read(msg)
-	if err != nil {
-		return false, err
-	}
-	var req request
-	json.Unmarshal(msg[:n], &req)
-
-	// Connection is ok if pong is returned
-	if req.Event == "pong" {
-		return true, nil
-	}
-
-	return false, nil
+	wsChan <- wsResult{message[:n], err}
 }
 
-// Read book data from websocket
-func (ok *OKCoin) readBook(ws *websocket.Conn) exchange.Book {
-	book := exchange.Book{Exg: ok}
-
-	// Read from websocket
-	msg := make([]byte, 4096)
-	n, err := ws.Read(msg)
-	if err != nil {
-		book.Error = fmt.Errorf("OKCoin book error: %s", err.Error())
-		book.Time = time.Now()
-		return book
+// Convert a wsResult to an exchange.Book
+func convertToBook(result wsResult, exg exchange.Exchange) exchange.Book {
+	// Check wsResult error
+	if result.err != nil {
+		return exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", result.err.Error())}
 	}
-
 	// Unmarshal into response
 	var resp response
-	err = json.Unmarshal(msg[:n], &resp)
-	if err != nil {
-		book.Error = fmt.Errorf("OKCoin book error: %s", err.Error())
-		book.Time = time.Now()
-		return book
+	if err := json.Unmarshal(result.message, &resp); err != nil {
+		return exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", err.Error())}
 	}
 	if resp[0].ErrorCode != 0 {
-		book.Error = fmt.Errorf("OKCoin book error code: %d", resp[0].ErrorCode)
-		book.Time = time.Now()
-		return book
+		return exchange.Book{Error: fmt.Errorf("OKCoin book error code: %d", resp[0].ErrorCode)}
 	}
 
 	// Book structure from the exchange
@@ -208,28 +186,50 @@ func (ok *OKCoin) readBook(ws *websocket.Conn) exchange.Book {
 	}
 
 	// Unmarshal response.Data into intermediate structure
-	err = json.Unmarshal(resp[0].Data, &tmp)
-	if err != nil {
-		book.Error = fmt.Errorf("OKCoin book error: %s", err.Error())
-		book.Time = time.Now()
-		return book
+	if err := json.Unmarshal(resp[0].Data, &tmp); err != nil {
+		return exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", err.Error())}
 	}
 
 	// Translate into exchange.Book structure
-	book.Bids = make(exchange.BidItems, 20)
-	book.Asks = make(exchange.AskItems, 20)
+	bids := make(exchange.BidItems, 20)
+	asks := make(exchange.AskItems, 20)
 	for i := 0; i < 20; i++ {
-		book.Bids[i].Price = tmp.Bids[i][0]
-		book.Bids[i].Amount = tmp.Bids[i][1]
-		book.Asks[i].Price = tmp.Asks[i][0]
-		book.Asks[i].Amount = tmp.Asks[i][1]
+		bids[i].Price = tmp.Bids[i][0]
+		bids[i].Amount = tmp.Bids[i][1]
+		asks[i].Price = tmp.Asks[i][0]
+		asks[i].Amount = tmp.Asks[i][1]
 	}
-	sort.Sort(book.Bids)
-	sort.Sort(book.Asks)
+	sort.Sort(bids)
+	sort.Sort(asks)
 
-	book.Error = nil
-	book.Time = time.Now()
-	return book
+	// Return book
+	return exchange.Book{
+		Exg:   exg,
+		Time:  time.Now(),
+		Bids:  bids,
+		Asks:  asks,
+		Error: nil,
+	}
+}
+
+// Reconnect to websocket
+func reconnect(ws *websocket.Conn, initMessage []byte) (*websocket.Conn, chan wsResult) {
+	// Close old websocket
+	ws.Close()
+	// Make new channel
+	wsChan := make(chan wsResult)
+	// Connect to new websocket
+	ws, err := websocket.Dial(websocketURL, "", origin)
+	// Keep trying on error
+	for err != nil {
+		time.Sleep(5 * time.Second)
+		ws, err = websocket.Dial(websocketURL, "", origin)
+		if err == nil {
+			_, err = ws.Write(initMessage)
+		}
+	}
+
+	return ws, wsChan
 }
 
 // SendOrder to the exchange
