@@ -126,6 +126,10 @@ func (ok *OKCoin) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
 				break Loop
 			// If readWS completes, convert it to an exchange.Book and send out
 			case result := <-wsChan:
+				if result.err != nil {
+					// Reconnect on read error
+					ws, wsChan = reconnect(ws, initMessage)
+				}
 				bookChan <- convertToBook(result, ok)
 			// If timeout, check connection
 			case <-time.After(30 * time.Second):
