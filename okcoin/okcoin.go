@@ -107,13 +107,13 @@ func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan
 	}
 
 	// Run a read loop in new goroutine
-	go runLoop(ws, initMessage, bookChan, doneChan, ok)
+	go ok.runLoop(ws, initMessage, bookChan, doneChan)
 
 	return nil
 }
 
 // Websocket read loop
-func runLoop(ws *websocket.Conn, initMessage []byte, bookChan chan<- exchange.Book, doneChan <-chan bool, exg exchange.Exchange) {
+func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage []byte, bookChan chan<- exchange.Book, doneChan <-chan bool) {
 	wsChan := make(chan wsResult)
 	for {
 		// Read from websocket without blocking
@@ -139,7 +139,7 @@ func runLoop(ws *websocket.Conn, initMessage []byte, bookChan chan<- exchange.Bo
 				}
 			}
 			// Send out no matter what (so error can be handled by user)
-			bookChan <- convertToBook(result, exg)
+			bookChan <- ok.convertToBook(result)
 		}
 	}
 }
@@ -155,7 +155,7 @@ func readWS(ws *websocket.Conn, wsChan chan<- wsResult) {
 }
 
 // Convert a wsResult to an exchange.Book
-func convertToBook(result wsResult, exg exchange.Exchange) exchange.Book {
+func (ok *OKCoin) convertToBook(result wsResult) exchange.Book {
 	// Check wsResult error
 	if result.err != nil {
 		return exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", result.err.Error())}
@@ -196,7 +196,7 @@ func convertToBook(result wsResult, exg exchange.Exchange) exchange.Book {
 
 	// Return book
 	return exchange.Book{
-		Exg:   exg,
+		Exg:   ok,
 		Time:  time.Now(),
 		Bids:  bids,
 		Asks:  asks,
