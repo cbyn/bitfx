@@ -41,7 +41,7 @@ type market struct {
 // Used for syncronizing access to exchange book data
 type readOp struct {
 	exg  exchange.Exchange
-	resp chan exchange.Book
+	resp chan *exchange.Book
 }
 
 // Global variables
@@ -162,9 +162,9 @@ func runMainLoop(inputChan <-chan rune) {
 // Handle book data from exchanges
 func handleBooks(readChan <-chan readOp, doneChan <-chan bool) {
 	// Map storing the current state
-	books := make(map[exchange.Exchange]exchange.Book)
+	books := make(map[exchange.Exchange]*exchange.Book)
 	// Channel to receive book data from exchanges
-	bookChan := make(chan exchange.Book)
+	bookChan := make(chan *exchange.Book)
 	// Channel to notify exchanges when done
 	exgDoneChan := make(chan bool, len(exchanges))
 
@@ -173,6 +173,7 @@ func handleBooks(readChan <-chan readOp, doneChan <-chan bool) {
 		if err := exg.CommunicateBook(bookChan, exgDoneChan); err != nil {
 			log.Fatal(err)
 		}
+		books[exg] = &exchange.Book{}
 	}
 
 	// Synchronize access to books (or finish if notified)
@@ -197,12 +198,12 @@ func handleBooks(readChan <-chan readOp, doneChan <-chan bool) {
 func findBestMarket(readChan chan<- readOp) (market, market) {
 	var (
 		bestBid, bestAsk market
-		book             exchange.Book
+		book             *exchange.Book
 	)
 	// Need to start with a high price for ask
 	bestAsk.adjPrice = math.MaxFloat64
 	// For book data requests
-	read := readOp{resp: make(chan exchange.Book)}
+	read := readOp{resp: make(chan *exchange.Book)}
 
 	// Loop through exchanges
 	for _, exg := range exchanges {

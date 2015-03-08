@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var book exchange.Book
+var book *exchange.Book
 var ok = New(os.Getenv("OKCOIN_KEY"), os.Getenv("OKCOIN_SECRET"), "ltc", "usd", 1, 0.002)
 
 func TestPriority(t *testing.T) {
@@ -35,7 +35,7 @@ func TestUpdatePositon(t *testing.T) {
 }
 
 func TestCommunicateBook(t *testing.T) {
-	bookChan := make(chan exchange.Book)
+	bookChan := make(chan *exchange.Book)
 	doneChan := make(chan bool)
 	err := ok.CommunicateBook(bookChan, doneChan)
 	if err != nil {

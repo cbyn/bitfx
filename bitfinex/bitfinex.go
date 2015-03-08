@@ -67,7 +67,7 @@ func (bf *Bitfinex) Position() float64 {
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel
-func (bf *Bitfinex) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
+func (bf *Bitfinex) CommunicateBook(bookChan chan<- *exchange.Book, doneChan <-chan bool) error {
 	// Run read loop in new goroutine
 	go bf.runLoop(bookChan, doneChan)
 
@@ -75,7 +75,7 @@ func (bf *Bitfinex) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-ch
 }
 
 // HTTP read loop
-func (bf *Bitfinex) runLoop(bookChan chan<- exchange.Book, doneChan <-chan bool) {
+func (bf *Bitfinex) runLoop(bookChan chan<- *exchange.Book, doneChan <-chan bool) {
 	// Used to compare timestamps
 	oldTimestamps := make([]float64, 40)
 
@@ -95,7 +95,7 @@ func (bf *Bitfinex) runLoop(bookChan chan<- exchange.Book, doneChan <-chan bool)
 }
 
 // Get book data with an http request
-func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
+func (bf *Bitfinex) getBook() (*exchange.Book, []float64) {
 	// Used to compare timestamps
 	timestamps := make([]float64, 40)
 
@@ -103,7 +103,7 @@ func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
 	url := fmt.Sprintf("%sbook/%s%s?limit_bids=%d&limit_asks=%d", URL, bf.symbol, bf.currency, 20, 20)
 	data, err := get(url)
 	if err != nil {
-		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}, timestamps
+		return &exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}, timestamps
 	}
 
 	var tmp struct {
@@ -120,7 +120,7 @@ func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
 	}
 
 	if err := json.Unmarshal(data, &tmp); err != nil {
-		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}, timestamps
+		return &exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}, timestamps
 	}
 
 	bids := make(exchange.BidItems, 20)
@@ -138,7 +138,7 @@ func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
 	sort.Sort(asks)
 
 	// Return book
-	return exchange.Book{
+	return &exchange.Book{
 		Exg:   bf,
 		Time:  time.Now(),
 		Bids:  bids,

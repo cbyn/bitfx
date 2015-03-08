@@ -89,7 +89,7 @@ func (ok *OKCoin) Position() float64 {
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel
-func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
+func (ok *OKCoin) CommunicateBook(bookChan chan<- *exchange.Book, doneChan <-chan bool) error {
 	// Connect to websocket
 	ws, err := websocket.Dial(websocketURL, "", origin)
 	if err != nil {
@@ -113,7 +113,7 @@ func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan
 }
 
 // Websocket read loop
-func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage []byte, bookChan chan<- exchange.Book, doneChan <-chan bool) {
+func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage []byte, bookChan chan<- *exchange.Book, doneChan <-chan bool) {
 	wsChan := make(chan wsResult)
 	for {
 		// Read from websocket without blocking
@@ -128,6 +128,7 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage []byte, bookChan chan<
 		case result := <-wsChan:
 			if result.err != nil || len(result.message) == 0 {
 				// Reconnect (don't bother with heartbeat check)
+				fmt.Println("reconnecting")
 				ws, err := websocket.Dial(websocketURL, "", origin)
 				// Keep trying on error
 				for err != nil {
@@ -155,18 +156,18 @@ func readWS(ws *websocket.Conn, wsChan chan<- wsResult) {
 }
 
 // Convert a wsResult to an exchange.Book
-func (ok *OKCoin) convertToBook(result wsResult) exchange.Book {
+func (ok *OKCoin) convertToBook(result wsResult) *exchange.Book {
 	// Check wsResult error
 	if result.err != nil {
-		return exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", result.err.Error())}
+		return &exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", result.err.Error())}
 	}
 	// Unmarshal into response
 	var resp response
 	if err := json.Unmarshal(result.message, &resp); err != nil {
-		return exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", err.Error())}
+		return &exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", err.Error())}
 	}
 	if resp[0].ErrorCode != 0 {
-		return exchange.Book{Error: fmt.Errorf("OKCoin book error code: %d", resp[0].ErrorCode)}
+		return &exchange.Book{Error: fmt.Errorf("OKCoin book error code: %d", resp[0].ErrorCode)}
 	}
 
 	// Book structure from the exchange
@@ -179,7 +180,7 @@ func (ok *OKCoin) convertToBook(result wsResult) exchange.Book {
 
 	// Unmarshal response.Data into intermediate structure
 	if err := json.Unmarshal(resp[0].Data, &tmp); err != nil {
-		return exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", err.Error())}
+		return &exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", err.Error())}
 	}
 
 	// Translate into exchange.Book structure
@@ -195,7 +196,7 @@ func (ok *OKCoin) convertToBook(result wsResult) exchange.Book {
 	sort.Sort(asks)
 
 	// Return book
-	return exchange.Book{
+	return &exchange.Book{
 		Exg:   ok,
 		Time:  time.Now(),
 		Bids:  bids,
