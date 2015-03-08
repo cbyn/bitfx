@@ -90,9 +90,6 @@ func (ok *OKCoin) Position() float64 {
 
 // CommunicateBook sends the latest available book data on the supplied channel
 func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
-	// Used for internal websocket communication
-	wsChan := make(chan wsResult)
-
 	// Connect to websocket
 	ws, err := websocket.Dial(websocketURL, "", origin)
 	if err != nil {
@@ -109,54 +106,49 @@ func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan
 		return fmt.Errorf("OKCoin CommunicateBook error: %s", err)
 	}
 
-	// Run infinite loop in new goroutine
-	go func() {
-	Loop:
-		for {
-			// Attempt to read from websocket without blocking
-			go readWS(ws, wsChan)
-
-			select {
-			// End if notified on doneChan
-			case <-doneChan:
-				ws.Close()
-				close(bookChan)
-				break Loop
-			// If readWS completes, convert it to an exchange.Book and send out
-			case result := <-wsChan:
-				if result.err != nil {
-					// Reconnect on read error
-					ws, wsChan = reconnect(ws, initMessage)
-				}
-				bookChan <- convertToBook(result, ok)
-			// If timeout, check connection
-			case <-time.After(30 * time.Second):
-				// Send heartbeat
-				if _, err := ws.Write([]byte(`{"event":"ping"}`)); err != nil {
-					// Reconnect on write error
-					ws, wsChan = reconnect(ws, initMessage)
-				}
-				select {
-				case result := <-wsChan:
-					if string(result.message) != `{"event":"pong"}` {
-						// Reconnect on anything other than a returned pong
-						ws, wsChan = reconnect(ws, initMessage)
-					}
-				case <-time.After(5 * time.Second):
-					// Reconnect on timeout
-					ws, wsChan = reconnect(ws, initMessage)
-				}
-			}
-		}
-	}()
+	// Run a read loop in new goroutine
+	go runLoop(ws, initMessage, bookChan, doneChan, ok)
 
 	return nil
+}
+
+// Websocket read loop
+func runLoop(ws *websocket.Conn, initMessage []byte, bookChan chan<- exchange.Book, doneChan <-chan bool, exg exchange.Exchange) {
+	wsChan := make(chan wsResult)
+	for {
+		// Read from websocket without blocking
+		go readWS(ws, wsChan)
+
+		select {
+		// End if notified on doneChan
+		case <-doneChan:
+			ws.Close()
+			close(bookChan)
+			return
+		case result := <-wsChan:
+			if result.err != nil || len(result.message) == 0 {
+				// Reconnect (don't bother with heartbeat check)
+				ws, err := websocket.Dial(websocketURL, "", origin)
+				// Keep trying on error
+				for err != nil {
+					time.Sleep(5 * time.Second)
+					ws, err = websocket.Dial(websocketURL, "", origin)
+					if err == nil {
+						_, err = ws.Write(initMessage)
+					}
+				}
+			}
+			// Send out no matter what (so error can be handled by user)
+			bookChan <- convertToBook(result, exg)
+		}
+	}
 }
 
 // Read from websocket
 func readWS(ws *websocket.Conn, wsChan chan<- wsResult) {
 	// Read from websocket
 	message := make([]byte, 4096)
+	ws.SetReadDeadline(time.Now().Add(30 * time.Second))
 	n, err := ws.Read(message)
 
 	wsChan <- wsResult{message[:n], err}
@@ -210,24 +202,6 @@ func convertToBook(result wsResult, exg exchange.Exchange) exchange.Book {
 		Asks:  asks,
 		Error: nil,
 	}
-}
-
-// Reconnect to websocket
-func reconnect(ws *websocket.Conn, initMessage []byte) (*websocket.Conn, chan wsResult) {
-	// Close old websocket
-	ws.Close()
-	// Connect to new websocket
-	ws, err := websocket.Dial(websocketURL, "", origin)
-	// Keep trying on error
-	for err != nil {
-		time.Sleep(5 * time.Second)
-		ws, err = websocket.Dial(websocketURL, "", origin)
-		if err == nil {
-			_, err = ws.Write(initMessage)
-		}
-	}
-
-	return ws, make(chan wsResult)
 }
 
 // SendOrder to the exchange
