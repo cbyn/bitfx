@@ -68,28 +68,30 @@ func (bf *Bitfinex) Position() float64 {
 
 // CommunicateBook sends the latest available book data on the supplied channel
 func (bf *Bitfinex) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
+	// Run read loop in new goroutine
+	go bf.runLoop(bookChan, doneChan)
+
+	return nil
+}
+
+// HTTP read loop
+func (bf *Bitfinex) runLoop(bookChan chan<- exchange.Book, doneChan <-chan bool) {
 	// Used to compare timestamps
 	oldTimestamps := make([]float64, 40)
 
-	// Run infinite loop in new goroutine
-	go func() {
-	Loop:
-		for {
-			select {
-			case <-doneChan:
-				close(bookChan)
-				break Loop
-			default:
-				book, newTimestamps := bf.getBook()
-				if bookChanged(oldTimestamps, newTimestamps) {
-					bookChan <- book
-				}
-				oldTimestamps = newTimestamps
+	for {
+		select {
+		case <-doneChan:
+			close(bookChan)
+			return
+		default:
+			book, newTimestamps := bf.getBook()
+			if bookChanged(oldTimestamps, newTimestamps) {
+				bookChan <- book
 			}
+			oldTimestamps = newTimestamps
 		}
-	}()
-
-	return nil
+	}
 }
 
 // Get book data with an http request
@@ -129,7 +131,7 @@ func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
 		asks[i].Price = tmp.Asks[i].Price
 		asks[i].Amount = tmp.Asks[i].Amount
 		timestamps[i] = tmp.Bids[i].Timestamp
-		timestamps[i*2] = tmp.Asks[i].Timestamp
+		timestamps[i+20] = tmp.Asks[i].Timestamp
 	}
 
 	sort.Sort(bids)
