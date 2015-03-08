@@ -66,11 +66,8 @@ func (bf *Bitfinex) Position() float64 {
 	return bf.position
 }
 
-// BookChan returns a channel that receives the latest available book data
-func (bf *Bitfinex) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
-	// Returned for external communication
-	bookChan := make(chan exchange.Book)
-
+// CommunicateBook sends the latest available book data on the supplied channel
+func (bf *Bitfinex) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
 	// Used to compare timestamps
 	oldTimestamps := make([]float64, 40)
 
@@ -92,8 +89,7 @@ func (bf *Bitfinex) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error)
 		}
 	}()
 
-	// Return channel
-	return bookChan, nil
+	return nil
 }
 
 // Get book data with an http request

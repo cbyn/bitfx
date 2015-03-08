@@ -13,7 +13,7 @@ type Exchange interface {
 	Fee() float64
 	SetPosition(float64)
 	Position() float64
-	BookChan(doneChan <-chan bool) (<-chan Book, error)
+	CommunicateBook(bookChan chan<- Book, doneChan <-chan bool) error
 	SendOrder(action, otype string, amount, price float64) (int64, error)
 	CancelOrder(id int64) (bool, error)
 	GetOrderStatus(id int64) (Order, error)

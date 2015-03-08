@@ -34,9 +34,10 @@ func TestUpdatePositon(t *testing.T) {
 	}
 }
 
-func TestBookChan(t *testing.T) {
+func TestCommunicateBook(t *testing.T) {
+	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
-	bookChan, err := ok.BookChan(doneChan)
+	err := ok.CommunicateBook(bookChan, doneChan)
 	if err != nil {
 		t.Fatal(err)
 	}

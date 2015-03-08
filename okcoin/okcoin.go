@@ -88,27 +88,25 @@ func (ok *OKCoin) Position() float64 {
 	return ok.position
 }
 
-// BookChan returns a channel that receives the latest available book data
-func (ok *OKCoin) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
-	// Returned for external communication
-	bookChan := make(chan exchange.Book)
+// CommunicateBook sends the latest available book data on the supplied channel
+func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
 	// Used for internal websocket communication
 	wsChan := make(chan wsResult)
 
 	// Connect to websocket
 	ws, err := websocket.Dial(websocketURL, "", origin)
 	if err != nil {
-		return bookChan, err
+		return fmt.Errorf("OKCoin CommunicateBook error: %s", err)
 	}
 
 	// Send request for book data
 	channel := fmt.Sprintf("ok_%s%s_depth", ok.symbol, ok.currency)
 	initMessage, err := json.Marshal(request{Event: "addChannel", Channel: channel})
 	if err != nil {
-		return bookChan, err
+		return fmt.Errorf("OKCoin CommunicateBook error: %s", err)
 	}
 	if _, err = ws.Write(initMessage); err != nil {
-		return bookChan, err
+		return fmt.Errorf("OKCoin CommunicateBook error: %s", err)
 	}
 
 	// Run infinite loop in new goroutine
@@ -152,8 +150,7 @@ func (ok *OKCoin) BookChan(doneChan <-chan bool) (<-chan exchange.Book, error) {
 		}
 	}()
 
-	// Return channel
-	return bookChan, nil
+	return nil
 }
 
 // Read from websocket
