@@ -3,9 +3,9 @@
 package main
 
 import (
-	"bitfx/bitfinex"
-	"bitfx/exchange"
-	"bitfx/okcoin"
+	"bitfx2/bitfinex"
+	"bitfx2/exchange"
+	"bitfx2/okcoin"
 	"code.google.com/p/gcfg"
 	"encoding/csv"
 	"flag"
@@ -23,14 +23,12 @@ type Config struct {
 	Sec struct {
 		Symbol      string  // Symbol to trade
 		Currency    string  // Underlying currency
-		Entries     int     // Number of book entries to request
 		EntryArb    float64 // Min arb amount to enter a position
 		ExitArb     float64 // Min arb amount to exit a position
 		MaxPosition float64 // Max position size on any exchange
 		MinNetPos   float64 // Min acceptable net position
 		MinOrder    float64 // Min order size for arb trade
 		MaxOrder    float64 // Max order size for arb trade
-		PrintBook   bool    // Print book data?
 	}
 }
 
@@ -38,6 +36,12 @@ type Config struct {
 type market struct {
 	exg                          exchange.Exchange
 	orderPrice, amount, adjPrice float64
+}
+
+// Used for syncronizing access to exchange book data
+type readOp struct {
+	exg  exchange.Exchange
+	resp chan exchange.Book
 }
 
 // Global variables
@@ -136,59 +140,82 @@ func checkStdin(inputChan chan<- rune) {
 
 // Run loop until user input is received
 func runMainLoop(inputChan <-chan rune) {
-	var (
-		doneChan = make(chan bool)
-		start    time.Time
-	)
+	readChan := make(chan readOp)
+	doneChan := make(chan bool)
+	go handleBooks(readChan, doneChan)
+
 	for {
-		apiErrors = false
-		// Record time for each iteration
-		start = time.Now()
-		// Exit gracefully if anything entered by user
+		bestBid, bestAsk := findBestMarket(readChan)
+		// checkArb(bestBid, bestAsk)
+		printResults(bestBid, bestAsk)
+
+		// Exit if anything entered by user
 		select {
 		case <-inputChan:
-			savePositions()
+			doneChan <- true
 			closeLogFile()
 			return
 		default:
 		}
+	}
+}
 
-		// Update book data in separate goroutines
-		for _, exg := range exchanges {
-			go updateBook(exg, doneChan)
+// Handle book data from exchanges
+func handleBooks(readChan <-chan readOp, doneChan <-chan bool) {
+	// Map storing the current state
+	books := make(map[exchange.Exchange]exchange.Book)
+	// Channel to receive book data from exchanges
+	bookChan := make(chan exchange.Book)
+	// Channel to notify exchanges when done
+	exgDoneChan := make(chan bool, len(exchanges))
+
+	// Initiate communication with each exchange
+	for _, exg := range exchanges {
+		if err := exg.CommunicateBook(bookChan, exgDoneChan); err != nil {
+			log.Fatal(err)
 		}
-		// Block until all results are returned
-		for _ = range exchanges {
-			<-doneChan
-		}
-		if !apiErrors {
-			bestBid, bestAsk := findBestMarket()
-			checkArb(bestBid, bestAsk)
-			printResults(bestBid, bestAsk, start)
+	}
+
+	// Synchronize access to books (or finish if notified)
+	for {
+		select {
+		case book := <-bookChan:
+			books[book.Exg] = book
+		case read := <-readChan:
+			read.resp <- books[read.exg]
+		case <-doneChan:
+			for range exchanges {
+				exgDoneChan <- true
+			}
+			return
 		}
 	}
 }
 
-// Update book for each exchange and notify when finished
-func updateBook(exg exchange.Exchange, doneChan chan<- bool) {
-	err := exg.UpdateBook(cfg.Sec.Entries)
-	checkErr(err)
-
-	doneChan <- true
-}
-
 // Find best bid and ask subject to MinOrder and MaxPosition
-func findBestMarket() (market, market) {
-	var bestBid, bestAsk market
-	bestAsk.adjPrice = math.MaxFloat64 // Need to start with a high price
+func findBestMarket(readChan chan<- readOp) (market, market) {
+	var (
+		bestBid, bestAsk market
+		book             exchange.Book
+	)
+	// Need to start with a high price for ask
+	bestAsk.adjPrice = math.MaxFloat64
+	// For book data requests
+	read := readOp{resp: make(chan exchange.Book)}
+
 	// Loop through exchanges
 	for _, exg := range exchanges {
-		// If the exchange postition is not already max short
+		// Make book read request
+		read.exg = exg
+		readChan <- read
+		book = <-read.resp
+
 		ableToSell := math.Min(cfg.Sec.MaxPosition+exg.Position(), cfg.Sec.MaxOrder)
-		if ableToSell >= cfg.Sec.MinOrder {
+		// If the exchange postition is not already max short, and data is not old
+		if ableToSell >= cfg.Sec.MinOrder && time.Since(book.Time) < 30*time.Second {
 			// Loop through bids and aggregate amounts until required size
 			var amount, aggPrice float64
-			for _, bid := range exg.Book().Bids {
+			for _, bid := range book.Bids {
 				// adjPrice is the amount-weighted average subject to ableToSell
 				aggPrice += bid.Price * math.Min(ableToSell-amount, bid.Amount)
 				amount += math.Min(ableToSell-amount, bid.Amount)
@@ -202,12 +229,12 @@ func findBestMarket() (market, market) {
 				}
 			}
 		}
-		// If the exchange postition is not already max long
 		ableToBuy := math.Min(cfg.Sec.MaxPosition-exg.Position(), cfg.Sec.MaxOrder)
-		if ableToBuy >= cfg.Sec.MinOrder {
+		// If the exchange postition is not already max long, and data is not old
+		if ableToBuy >= cfg.Sec.MinOrder && time.Since(book.Time) < 30*time.Second {
 			// Loop through asks and aggregate amounts until required size
 			var amount, aggPrice float64
-			for _, ask := range exg.Book().Asks {
+			for _, ask := range book.Asks {
 				// adjPrice is the amount-weighted average subject to ableToBuy
 				aggPrice += ask.Price * math.Min(ableToBuy-amount, ask.Amount)
 				amount += math.Min(ableToBuy-amount, ask.Amount)
@@ -343,11 +370,9 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 }
 
 // Print relevant data to terminal
-func printResults(bestBid, bestAsk market, start time.Time) {
+func printResults(bestBid, bestAsk market) {
 	clearScreen()
-	if cfg.Sec.PrintBook {
-		printMarkets()
-	}
+
 	fmt.Println("   Positions:")
 	fmt.Println("----------------")
 	for _, exg := range exchanges {
@@ -360,25 +385,6 @@ func printResults(bestBid, bestAsk market, start time.Time) {
 	fmt.Println("\nOpportunity:")
 	fmt.Printf("%.4f for %.2f\n", bestBid.adjPrice-bestAsk.adjPrice, math.Min(bestBid.amount, bestAsk.amount))
 	fmt.Printf("\nRun P&L: $%.2f\n", pl)
-	fmt.Printf("\n%v processing time...", time.Since(start))
-}
-
-// Print book data from each exchange
-func printMarkets() {
-	for _, exg := range exchanges {
-		fmt.Printf("          %v\n", exg)
-		fmt.Println("----------------------------")
-		fmt.Printf("%-10s%-10s%8s\n", " Bid", "  Ask", "Size ")
-		fmt.Println("----------------------------")
-		for i := range exg.Book().Asks {
-			item := exg.Book().Asks[len(exg.Book().Asks)-1-i]
-			fmt.Printf("%-10s%-10.4f%8.2f\n", "", item.Price, item.Amount)
-		}
-		for _, item := range exg.Book().Bids {
-			fmt.Printf("%-10.4f%-10.2s%8.2f\n", item.Price, "", item.Amount)
-		}
-		fmt.Println("----------------------------")
-	}
 }
 
 // Clear the terminal between prints
