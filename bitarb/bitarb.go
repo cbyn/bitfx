@@ -48,7 +48,6 @@ type readOp struct {
 var (
 	logFile     os.File             // Log printed to file
 	cfg         Config              // Configuration struct
-	apiErrors   bool                // Set true on any errors
 	exchanges   []exchange.Exchange // Slice of exchanges
 	netPosition float64             // Net position accross exchanges
 	pl          float64             // Net P&L for current run
@@ -180,7 +179,9 @@ func handleBooks(readChan <-chan readOp, doneChan <-chan bool) {
 	for {
 		select {
 		case book := <-bookChan:
-			books[book.Exg] = book
+			if !isError(book.Error) {
+				books[book.Exg] = book
+			}
 		case read := <-readChan:
 			read.resp <- books[read.exg]
 		case <-doneChan:
@@ -338,7 +339,7 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 	// Send order
 	for {
 		id, err = exg.SendOrder(action, "limit", amount, price)
-		checkErr(err)
+		isError(err)
 		if id != 0 {
 			break
 		}
@@ -346,10 +347,10 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 	// Check status and cancel if necessary
 	for {
 		order, err = exg.GetOrderStatus(id)
-		checkErr(err)
+		isError(err)
 		if order.Status == "live" {
 			_, err = exg.CancelOrder(id)
-			checkErr(err)
+			isError(err)
 		} else if order.Status == "dead" {
 			break
 		}
@@ -395,11 +396,12 @@ func clearScreen() {
 }
 
 // Called on any error
-func checkErr(err error) {
+func isError(err error) bool {
 	if err != nil {
 		log.Println(err)
-		apiErrors = true
+		return true
 	}
+	return false
 }
 
 // Saves positions to file for next run
