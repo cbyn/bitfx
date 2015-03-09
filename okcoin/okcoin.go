@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/gorilla/websocket"
 	"io/ioutil"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -111,51 +112,99 @@ func (ok *OKCoin) CommunicateBook(bookChan chan<- *exchange.Book, doneChan <-cha
 
 // Websocket read loop
 func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan<- *exchange.Book, doneChan <-chan bool) {
+	// Setup heartbeat
+	pingInterval := 5 * time.Second
+	ws.SetPongHandler(func(string) error { return ws.SetReadDeadline(time.Now().Add(pingInterval + time.Second)) })
+	ticker := time.NewTicker(pingInterval)
+
+	// Syncronize access to *websocket.Conn
+	useWS := make(chan bool)
+	getWS := make(chan *websocket.Conn)
+	reconnectWS := make(chan bool)
+	closeWS := make(chan bool)
+	go func() {
+	LOOP:
+		for {
+			select {
+			case <-useWS:
+				getWS <- ws
+			case <-reconnectWS:
+				ws = reconnect(initMessage)
+			case <-closeWS:
+				ws.Close()
+				break LOOP
+			}
+		}
+	}()
+
+	// Send pings to websocket
+	go func() {
+		for range ticker.C {
+			useWS <- true
+			if err := (<-getWS).WriteControl(9, []byte{}, time.Now().Add(time.Second)); err != nil {
+				// Reconnect on error
+				reconnectWS <- true
+			}
+		}
+	}()
+
+	// Read from websocket
+	respChan := make(chan *response)
+	go func() {
+		var resp response
+		for {
+			useWS <- true
+			if err := (<-getWS).ReadJSON(&resp); err != nil {
+				// Reconnect on error
+				reconnectWS <- true
+			} else {
+				respChan <- &resp
+			}
+		}
+	}()
+
 	for {
 		select {
 		// End if notified on doneChan
 		case <-doneChan:
-			ws.Close()
 			close(bookChan)
+			closeWS <- true
 			return
-		default:
-			result := readWS(ws)
-			if result.err != nil {
-				// Reconnect
-
-				// 	fmt.Println("reconnecting")
-				// 	ws, err := websocket.Dial(websocketURL, "", origin)
-				// 	// Keep trying on error
-				// 	for err != nil {
-				// 		time.Sleep(5 * time.Second)
-				// 		ws, err = websocket.Dial(websocketURL, "", origin)
-				// 		if err == nil {
-				// 			_, err = ws.Write(initMessage)
-				// 		}
-				// 	}
-			}
-			// Send out no matter what (so error can be handled by user)
-			bookChan <- ok.convertToBook(result)
+		case resp := <-respChan:
+			bookChan <- ok.convertToBook(resp)
 		}
 	}
 }
 
-// Read from websocket
-func readWS(ws *websocket.Conn) *wsResult {
-	var resp response
-	err := ws.ReadJSON(&resp)
+// Reconnect websocket
+func reconnect(initMessage request) *websocket.Conn {
+	log.Println("Reconnecting...")
 
-	return &wsResult{resp, err}
+	// Try reconnecting
+	ws, _, err := websocket.DefaultDialer.Dial(websocketURL, http.Header{})
+	if err == nil {
+		err = ws.WriteJSON(initMessage)
+	}
+	// Keep trying on error
+	for err != nil {
+		log.Println(err)
+		time.Sleep(5 * time.Second)
+		ws, _, err = websocket.DefaultDialer.Dial(websocketURL, http.Header{})
+		if err == nil {
+			err = ws.WriteJSON(initMessage)
+		}
+	}
+
+	log.Println("Successful reconnect")
+
+	return ws
 }
 
 // Convert a wsResult to an exchange.Book
-func (ok *OKCoin) convertToBook(result *wsResult) *exchange.Book {
-	// Check errors
-	if result.err != nil {
-		return &exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", result.err.Error())}
-	}
-	if result.resp[0].ErrorCode != 0 {
-		return &exchange.Book{Error: fmt.Errorf("OKCoin book error code: %d", result.resp[0].ErrorCode)}
+func (ok *OKCoin) convertToBook(respRef *response) *exchange.Book {
+	resp := *respRef
+	if resp[0].ErrorCode != 0 {
+		return &exchange.Book{Error: fmt.Errorf("OKCoin book error code: %d", resp[0].ErrorCode)}
 	}
 
 	// Book structure from the exchange
@@ -167,7 +216,7 @@ func (ok *OKCoin) convertToBook(result *wsResult) *exchange.Book {
 	}
 
 	// Unmarshal response.Data into intermediate structure
-	if err := json.Unmarshal(result.resp[0].Data, &tmp); err != nil {
+	if err := json.Unmarshal(resp[0].Data, &tmp); err != nil {
 		return &exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", err.Error())}
 	}
 
