@@ -263,6 +263,10 @@ func findBestMarket(readChan chan<- readOp) (market, market) {
 
 // Send trade if arb exists or net position exists
 func checkArb(bestBid, bestAsk market) {
+	if bestBid.exg == nil || bestAsk.exg == nil {
+		return
+	}
+
 	if netPosition >= cfg.Sec.MinNetPos {
 		// If net long, exit where possible
 		amount := math.Min(netPosition, bestBid.amount)
