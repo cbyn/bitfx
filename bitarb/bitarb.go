@@ -144,6 +144,7 @@ func runMainLoop(inputChan <-chan rune) {
 	readChan := make(chan readOp)
 	doneChan := make(chan bool)
 	go handleBooks(readChan, doneChan)
+	time.Sleep(5 * time.Second)
 
 	for {
 		bestBid, bestAsk := findBestMarket(readChan)
