@@ -1,9 +1,10 @@
 [sec]
 symbol      = "ltc" # Symbol to trade
 currency    = "usd" # Underlying currency
-entryArb    = .015 # Min arb amount to enter a position
-exitArb     = -.005 # Min arb amount to exit a position
-maxPosition = 75 # Max position size on any exchange
+entryArb    = .01 # Min arb amount to enter a position
+exitArb     = 0 # Min arb amount to exit a position
+maxPosition = 50 # Max position size on any exchange
 minNetPos   = .1 # Min acceptable net position
 minOrder    = 1 # Min order size for arb trade
-maxOrder    = 75 # Max order size for arb trade
+maxOrder    = 50 # Max order size for arb trade
+printOn     = false # Display results in terminal

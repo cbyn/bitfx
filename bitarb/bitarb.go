@@ -29,6 +29,7 @@ type Config struct {
 		MinNetPos   float64 // Min acceptable net position
 		MinOrder    float64 // Min order size for arb trade
 		MaxOrder    float64 // Max order size for arb trade
+		PrintOn     bool    // Display results in terminal
 	}
 }
 
@@ -139,20 +140,24 @@ func checkStdin(inputChan chan<- rune) {
 
 // Run loop until user input is received
 func runMainLoop(inputChan <-chan rune) {
+	fmt.Println("Running...")
 	readChan := make(chan readOp)
 	doneChan := make(chan bool)
 	go handleBooks(readChan, doneChan)
 
 	for {
 		bestBid, bestAsk := findBestMarket(readChan)
-		// checkArb(bestBid, bestAsk)
-		printResults(bestBid, bestAsk)
+		checkArb(bestBid, bestAsk)
+		if cfg.Sec.PrintOn {
+			printResults(bestBid, bestAsk)
+		}
 
 		// Exit if anything entered by user
 		select {
 		case <-inputChan:
 			doneChan <- true
 			closeLogFile()
+			fmt.Println("Terminated")
 			return
 		default:
 		}
