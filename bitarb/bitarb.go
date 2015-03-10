@@ -147,20 +147,20 @@ func runMainLoop(inputChan <-chan rune) {
 	time.Sleep(5 * time.Second)
 
 	for {
-		bestBid, bestAsk := findBestMarket(readChan)
-		checkArb(bestBid, bestAsk)
-		if cfg.Sec.PrintOn {
-			printResults(bestBid, bestAsk)
-		}
-
 		// Exit if anything entered by user
 		select {
 		case <-inputChan:
 			doneChan <- true
+			savePositions()
 			closeLogFile()
 			fmt.Println("Terminated")
 			return
 		default:
+			bestBid, bestAsk := findBestMarket(readChan)
+			checkArb(bestBid, bestAsk)
+			if cfg.Sec.PrintOn {
+				printResults(bestBid, bestAsk)
+			}
 		}
 	}
 }
