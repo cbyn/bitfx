@@ -151,8 +151,8 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan
 	// Read from websocket
 	respChan := make(chan *response)
 	go func() {
-		var resp response
 		for {
+			var resp response // Need to create new each loop to avoid race?
 			useWS <- true
 			if err := (<-getWS).ReadJSON(&resp); err != nil {
 				// Reconnect on error
