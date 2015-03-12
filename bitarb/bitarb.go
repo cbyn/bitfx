@@ -123,6 +123,8 @@ func calcNetPosition() {
 }
 
 func main() {
+	fmt.Println("Running...")
+
 	// For communicating best markets
 	marketChan := make(chan bestMarket)
 	// For notifying termination (on any user input)
@@ -132,9 +134,11 @@ func main() {
 	go checkStdin(doneChan)
 	go considerTrade(marketChan)
 	handleData(marketChan, doneChan)
-	// Fini
+
+	// Finished
 	savePositions()
 	closeLogFile()
+	fmt.Println("~~~ Fini ~~~")
 }
 
 // Check for any user input
@@ -173,7 +177,7 @@ func handleData(marketChan chan<- bestMarket, doneChan <-chan bool) {
 				default:
 				}
 			}
-		// Fini
+		// Finish
 		case <-doneChan:
 			for range exchanges {
 				exgDoneChan <- true
