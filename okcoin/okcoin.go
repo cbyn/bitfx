@@ -39,19 +39,6 @@ type request struct {
 	Parameters map[string]string `json:"parameters"` // Additional parameters
 }
 
-// Exchange response format
-type response []struct {
-	Channel   string          `json:"channel"`          // Channel name
-	ErrorCode int64           `json:"errorcode,string"` // Error code if not successful
-	Data      json.RawMessage `json:"data"`             // Data specific to channel
-}
-
-// Result from a websocket Read()
-type wsResult struct {
-	resp response
-	err  error
-}
-
 // New returns a pointer to a new OKCoin instance
 func New(key, secret, symbol, currency string, priority int, fee float64) *OKCoin {
 	return &OKCoin{
@@ -114,8 +101,8 @@ func (ok *OKCoin) CommunicateBook(bookChan chan<- *exchange.Book, doneChan <-cha
 func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan<- *exchange.Book, doneChan <-chan bool) {
 	// Setup heartbeat
 	pingInterval := 5 * time.Second
-	ws.SetPongHandler(func(string) error { return ws.SetReadDeadline(time.Now().Add(pingInterval + time.Second)) })
 	ticker := time.NewTicker(pingInterval)
+	ping := []byte(`{"event":"ping"}`)
 
 	// Syncronize access to *websocket.Conn
 	useWS := make(chan bool)
@@ -129,6 +116,7 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan
 			case <-useWS:
 				getWS <- ws
 			case <-reconnectWS:
+				ws.Close()
 				ws = reconnect(initMessage)
 			case <-closeWS:
 				ws.Close()
@@ -137,41 +125,42 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan
 		}
 	}()
 
-	// Send pings to websocket
-	go func() {
-		for range ticker.C {
-			useWS <- true
-			if err := (<-getWS).WriteControl(9, []byte{}, time.Now().Add(time.Second)); err != nil {
-				// Reconnect on error
-				reconnectWS <- true
-			}
-		}
-	}()
-
 	// Read from websocket
-	respChan := make(chan *response)
+	dataChan := make(chan []byte)
 	go func() {
 		for {
-			var resp response // Need to create new each loop to avoid race?
 			useWS <- true
-			if err := (<-getWS).ReadJSON(&resp); err != nil {
+			(<-getWS).SetReadDeadline(time.Now().Add(pingInterval + time.Second))
+			useWS <- true
+			_, data, err := (<-getWS).ReadMessage()
+			if err != nil {
 				// Reconnect on error
 				reconnectWS <- true
-			} else {
-				respChan <- &resp
+			} else if string(data) != `{"event":"pong"}` {
+				// Send for processing if not a pong
+				dataChan <- data
 			}
 		}
 	}()
 
 	for {
 		select {
-		// End if notified on doneChan
 		case <-doneChan:
+			// End if notified
 			close(bookChan)
+			ticker.Stop()
 			closeWS <- true
 			return
-		case resp := <-respChan:
-			bookChan <- ok.convertToBook(resp)
+		case <-ticker.C:
+			// Send text ping (real type 9 pings not supported)
+			useWS <- true
+			if err := (<-getWS).WriteMessage(1, ping); err != nil {
+				// Reconnect on error
+				reconnectWS <- true
+			}
+		case data := <-dataChan:
+			// Process data and send out
+			bookChan <- ok.convertToBook(data)
 		}
 	}
 }
@@ -200,34 +189,37 @@ func reconnect(initMessage request) *websocket.Conn {
 	return ws
 }
 
-// Convert a wsResult to an exchange.Book
-func (ok *OKCoin) convertToBook(respRef *response) *exchange.Book {
-	resp := *respRef
+// Convert websocket data to an exchange.Book
+func (ok *OKCoin) convertToBook(data []byte) *exchange.Book {
+	// Unmarshal
+	var resp []struct {
+		Channel   string `json:"channel"`          // Channel name
+		ErrorCode int64  `json:"errorcode,string"` // Error code if not successful
+		Data      struct {
+			Bids       [][2]float64 `json:"bids"`             // Slice of bid data items
+			Asks       [][2]float64 `json:"asks"`             // Slice of ask data items
+			Timestamp  int64        `json:"timestamp,string"` // Timestamp
+			UnitAmount int          `json:"unit_amount"`      // Unit amount for futures
+
+		} `json:"data"` // Data specific to channel
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return &exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", err.Error())}
+	}
+
+	// Return error if there is an exchange error code
 	if resp[0].ErrorCode != 0 {
 		return &exchange.Book{Error: fmt.Errorf("OKCoin book error code: %d", resp[0].ErrorCode)}
-	}
-
-	// Book structure from the exchange
-	var tmp struct {
-		Bids       [][2]float64 `json:"bids"`             // Slice of bid data items
-		Asks       [][2]float64 `json:"asks"`             // Slice of ask data items
-		Timestamp  int64        `json:"timestamp,string"` // Timestamp
-		UnitAmount int          `json:"unit_amount"`      // Unit amount for futures
-	}
-
-	// Unmarshal response.Data into intermediate structure
-	if err := json.Unmarshal(resp[0].Data, &tmp); err != nil {
-		return &exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", err.Error())}
 	}
 
 	// Translate into exchange.Book structure
 	bids := make(exchange.BidItems, 20)
 	asks := make(exchange.AskItems, 20)
 	for i := 0; i < 20; i++ {
-		bids[i].Price = tmp.Bids[i][0]
-		bids[i].Amount = tmp.Bids[i][1]
-		asks[i].Price = tmp.Asks[i][0]
-		asks[i].Amount = tmp.Asks[i][1]
+		bids[i].Price = resp[0].Data.Bids[i][0]
+		bids[i].Amount = resp[0].Data.Bids[i][1]
+		asks[i].Price = resp[0].Data.Asks[i][0]
+		asks[i].Amount = resp[0].Data.Asks[i][1]
 	}
 	sort.Sort(bids)
 	sort.Sort(asks)
