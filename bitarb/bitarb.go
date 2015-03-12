@@ -57,7 +57,7 @@ func init() {
 	setConfig()
 	setLog()
 	setExchanges()
-	setPositions()
+	setStatus()
 	calcNetPosition()
 }
 
@@ -73,8 +73,7 @@ func setConfig() {
 
 // Set file for logging
 func setLog() {
-	filename := fmt.Sprintf("%s_arb.log", cfg.Sec.Symbol)
-	logFile, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	logFile, err := os.OpenFile("bitarb.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -93,24 +92,28 @@ func setExchanges() {
 	}
 }
 
-// Set positions from previous run if file exists
-func setPositions() {
-	filename := fmt.Sprintf("%s_positions.csv", cfg.Sec.Symbol)
-	if file, err := os.Open(filename); err == nil {
+// Set status from previous run if file exists
+func setStatus() {
+	if file, err := os.Open("status.csv"); err == nil {
 		defer file.Close()
 		reader := csv.NewReader(file)
-		positions, err := reader.Read()
+		status, err := reader.Read()
 		if err != nil {
 			log.Fatal(err)
 		}
 		for i, exg := range exchanges {
-			position, err := strconv.ParseFloat(positions[i], 64)
+			position, err := strconv.ParseFloat(status[i], 64)
 			if err != nil {
 				log.Fatal(err)
 			}
 			exg.SetPosition(position)
 		}
-		log.Printf("Loaded positions %v\n", positions)
+		pl, err = strconv.ParseFloat(status[len(status)-1], 64)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Loaded positions %v\n", status[0:len(status)-1])
+		log.Printf("Loaded P&L %f\n", pl)
 	}
 }
 
@@ -136,7 +139,7 @@ func main() {
 	handleData(marketChan, doneChan)
 
 	// Finished
-	savePositions()
+	saveStatus()
 	closeLogFile()
 	fmt.Println("~~~ Fini ~~~")
 }
@@ -404,20 +407,20 @@ func isError(err error) bool {
 	return false
 }
 
-// Saves positions to file for next run
-func savePositions() {
-	filename := fmt.Sprintf("%s_positions.csv", cfg.Sec.Symbol)
-	file, err := os.Create(filename)
+// Save status to file
+func saveStatus() {
+	file, err := os.Create("status.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer file.Close()
-	positions := make([]string, len(exchanges))
+	status := make([]string, len(exchanges)+1)
 	for i, exg := range exchanges {
-		positions[i] = fmt.Sprintf("%f", exg.Position())
+		status[i] = fmt.Sprintf("%f", exg.Position())
 	}
+	status[len(exchanges)] = fmt.Sprintf("%f", pl)
 	writer := csv.NewWriter(file)
-	err = writer.Write(positions)
+	err = writer.Write(status)
 	if err != nil {
 		log.Fatal(err)
 	}
