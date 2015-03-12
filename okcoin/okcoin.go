@@ -99,11 +99,6 @@ func (ok *OKCoin) CommunicateBook(bookChan chan<- *exchange.Book, doneChan <-cha
 
 // Websocket read loop
 func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan<- *exchange.Book, doneChan <-chan bool) {
-	// Setup heartbeat
-	pingInterval := 5 * time.Second
-	ticker := time.NewTicker(pingInterval)
-	ping := []byte(`{"event":"ping"}`)
-
 	// Syncronize access to *websocket.Conn
 	useWS := make(chan bool)
 	getWS := make(chan *websocket.Conn)
@@ -125,6 +120,11 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan
 		}
 	}()
 
+	// Setup heartbeat
+	pingInterval := 20 * time.Second
+	ticker := time.NewTicker(pingInterval)
+	ping := []byte(`{"event":"ping"}`)
+
 	// Read from websocket
 	dataChan := make(chan []byte)
 	go func() {
@@ -137,7 +137,7 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan
 				// Reconnect on error
 				reconnectWS <- true
 			} else if string(data) != `{"event":"pong"}` {
-				// Send for processing if not a pong
+				// If not a pong, send for processing
 				dataChan <- data
 			}
 		}
@@ -152,14 +152,14 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan
 			closeWS <- true
 			return
 		case <-ticker.C:
-			// Send text ping (real type 9 pings not supported)
+			// Send ping (true type-9 pings not supported by server)
 			useWS <- true
 			if err := (<-getWS).WriteMessage(1, ping); err != nil {
 				// Reconnect on error
 				reconnectWS <- true
 			}
 		case data := <-dataChan:
-			// Process data and send out
+			// Process data and send out to user
 			bookChan <- ok.convertToBook(data)
 		}
 	}
