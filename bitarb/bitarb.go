@@ -33,16 +33,14 @@ type Config struct {
 	}
 }
 
-// Used for storing best markets across exchanges
+// Used for storing best market across exchanges
+type bestMarket struct {
+	bid market
+	ask market
+}
 type market struct {
 	exg                          exchange.Exchange
 	orderPrice, amount, adjPrice float64
-}
-
-// Used for syncronizing access to exchange book data
-type readOp struct {
-	exg  exchange.Exchange
-	resp chan *exchange.Book
 }
 
 // Global variables
@@ -125,49 +123,27 @@ func calcNetPosition() {
 }
 
 func main() {
-	// Check for input and run main loop
-	inputChan := make(chan rune)
-	go checkStdin(inputChan)
-	runMainLoop(inputChan)
+	// For communicating best markets
+	marketChan := make(chan bestMarket)
+	// For notifying termination (on any user input)
+	doneChan := make(chan bool)
+
+	// Launch goroutines
+	go checkStdin(doneChan)
+	go considerTrade(marketChan)
+	handleData(marketChan, doneChan)
 }
 
 // Check for any user input
-func checkStdin(inputChan chan<- rune) {
+func checkStdin(doneChan chan<- bool) {
 	var ch rune
 	fmt.Scanf("%c", &ch)
-	inputChan <- ch
-}
-
-// Run loop until user input is received
-func runMainLoop(inputChan <-chan rune) {
-	fmt.Println("Running...")
-	readChan := make(chan readOp)
-	doneChan := make(chan bool)
-	go handleBooks(readChan, doneChan)
-	time.Sleep(5 * time.Second)
-
-	for {
-		// Exit if anything entered by user
-		select {
-		case <-inputChan:
-			doneChan <- true
-			savePositions()
-			closeLogFile()
-			fmt.Println("Terminated")
-			return
-		default:
-			bestBid, bestAsk := findBestMarket(readChan)
-			checkArb(bestBid, bestAsk)
-			if cfg.Sec.PrintOn {
-				printResults(bestBid, bestAsk)
-			}
-		}
-	}
+	doneChan <- true
 }
 
 // Handle book data from exchanges
-func handleBooks(readChan <-chan readOp, doneChan <-chan bool) {
-	// Map storing the current state
+func handleData(marketChan chan<- bestMarket, doneChan <-chan bool) {
+	// Map storing current book data for each exchange
 	books := make(map[exchange.Exchange]*exchange.Book)
 	// Channel to receive book data from exchanges
 	bookChan := make(chan *exchange.Book)
@@ -182,43 +158,43 @@ func handleBooks(readChan <-chan readOp, doneChan <-chan bool) {
 		books[exg] = &exchange.Book{}
 	}
 
-	// Synchronize access to books (or finish if notified)
 	for {
 		select {
+		// Receive data from an exchange
 		case book := <-bookChan:
 			if !isError(book.Error) {
 				books[book.Exg] = book
+				// Send if ready to be used, otherwise discard
+				select {
+				case marketChan <- findBestMarket(books):
+				default:
+				}
 			}
-		case read := <-readChan:
-			read.resp <- books[read.exg]
+		// Fini
 		case <-doneChan:
 			for range exchanges {
 				exgDoneChan <- true
 			}
+			close(marketChan)
 			return
 		}
 	}
 }
 
 // Find best bid and ask subject to MinOrder and MaxPosition
-func findBestMarket(readChan chan<- readOp) (market, market) {
+func findBestMarket(books map[exchange.Exchange]*exchange.Book) bestMarket {
 	var (
-		bestBid, bestAsk market
-		book             *exchange.Book
+		best bestMarket
+		book exchange.Book
 	)
 	// Need to start with a high price for ask
-	bestAsk.adjPrice = math.MaxFloat64
-	// For book data requests
-	read := readOp{resp: make(chan *exchange.Book)}
+	best.ask.adjPrice = math.MaxFloat64
 
 	// Loop through exchanges
 	for _, exg := range exchanges {
-		// Make book read request
-		read.exg = exg
-		readChan <- read
-		book = <-read.resp
-
+		book = *books[exg]
 		ableToSell := math.Min(cfg.Sec.MaxPosition+exg.Position(), cfg.Sec.MaxOrder)
+
 		// If the exchange postition is not already max short, and data is not old
 		if ableToSell >= cfg.Sec.MinOrder && time.Since(book.Time) < 30*time.Second {
 			// Loop through bids and aggregate amounts until required size
@@ -230,8 +206,8 @@ func findBestMarket(readChan chan<- readOp) (market, market) {
 				if amount >= cfg.Sec.MinOrder {
 					// Set as best bid if adjusted price is highest
 					adjPrice := (aggPrice / amount) * (1 - exg.Fee())
-					if adjPrice > bestBid.adjPrice {
-						bestBid = market{exg, bid.Price, amount, adjPrice}
+					if adjPrice > best.bid.adjPrice {
+						best.bid = market{exg, bid.Price, amount, adjPrice}
 					}
 					break
 				}
@@ -249,8 +225,8 @@ func findBestMarket(readChan chan<- readOp) (market, market) {
 				if amount >= cfg.Sec.MinOrder {
 					// Set as best ask if adjusted price is lowest
 					adjPrice := (aggPrice / amount) * (1 + exg.Fee())
-					if adjPrice < bestAsk.adjPrice {
-						bestAsk = market{exg, ask.Price, amount, adjPrice}
+					if adjPrice < best.ask.adjPrice {
+						best.ask = market{exg, ask.Price, amount, adjPrice}
 					}
 					break
 				}
@@ -258,46 +234,48 @@ func findBestMarket(readChan chan<- readOp) (market, market) {
 		}
 	}
 
-	return bestBid, bestAsk
+	return best
 }
 
 // Send trade if arb exists or net position exists
-func checkArb(bestBid, bestAsk market) {
-	if bestBid.exg == nil || bestAsk.exg == nil {
-		return
-	}
+func considerTrade(marketChan <-chan bestMarket) {
+	for best := range marketChan {
+		if best.bid.exg == nil || best.ask.exg == nil {
+			continue
+		}
 
-	if netPosition >= cfg.Sec.MinNetPos {
-		// If net long, exit where possible
-		amount := math.Min(netPosition, bestBid.amount)
-		log.Println("Net long position exit")
-		fillChan := make(chan float64)
-		go fillOrKill(bestBid.exg, "sell", amount, bestBid.orderPrice, fillChan)
-		updatePL(bestBid.adjPrice, <-fillChan, "sell")
-		calcNetPosition()
-	} else if netPosition <= -cfg.Sec.MinNetPos {
-		// If net short, exit where possible
-		amount := math.Min(-netPosition, bestAsk.amount)
-		log.Println("Net short position exit")
-		fillChan := make(chan float64)
-		go fillOrKill(bestAsk.exg, "buy", amount, bestAsk.orderPrice, fillChan)
-		updatePL(bestAsk.adjPrice, <-fillChan, "buy")
-		calcNetPosition()
-	} else if bestBid.adjPrice-bestAsk.adjPrice >= cfg.Sec.EntryArb {
-		// If arb exists, trade pair
-		amount := math.Min(bestBid.amount, bestAsk.amount)
-		log.Printf("*** Arb Opportunity: %.4f for %.2f on %s vs %s ***\n", bestBid.adjPrice-bestAsk.adjPrice, amount, bestBid.exg, bestAsk.exg)
-		sendPair(bestBid, bestAsk, amount)
-		calcNetPosition()
-	} else if (bestBid.exg.Position() >= cfg.Sec.MinOrder && bestAsk.exg.Position() <= -cfg.Sec.MinOrder) &&
-		(bestBid.adjPrice-bestAsk.adjPrice >= cfg.Sec.ExitArb) {
-		// If inter-exchange position can be exited, trade pair
-		available := math.Min(bestBid.amount, bestAsk.amount)
-		needed := math.Min(bestBid.exg.Position(), -bestAsk.exg.Position())
-		amount := math.Min(available, needed)
-		log.Printf("*** Exit Opportunity: %.4f for %.2f on %s vs %s ***\n", bestBid.adjPrice-bestAsk.adjPrice, amount, bestBid.exg, bestAsk.exg)
-		sendPair(bestBid, bestAsk, amount)
-		calcNetPosition()
+		if netPosition >= cfg.Sec.MinNetPos {
+			// If net long, exit where possible
+			amount := math.Min(netPosition, best.bid.amount)
+			log.Println("Net long position exit")
+			fillChan := make(chan float64)
+			go fillOrKill(best.bid.exg, "sell", amount, best.bid.orderPrice, fillChan)
+			updatePL(best.bid.adjPrice, <-fillChan, "sell")
+			calcNetPosition()
+		} else if netPosition <= -cfg.Sec.MinNetPos {
+			// If net short, exit where possible
+			amount := math.Min(-netPosition, best.ask.amount)
+			log.Println("Net short position exit")
+			fillChan := make(chan float64)
+			go fillOrKill(best.ask.exg, "buy", amount, best.ask.orderPrice, fillChan)
+			updatePL(best.ask.adjPrice, <-fillChan, "buy")
+			calcNetPosition()
+		} else if best.bid.adjPrice-best.ask.adjPrice >= cfg.Sec.EntryArb {
+			// If arb exists, trade pair
+			amount := math.Min(best.bid.amount, best.ask.amount)
+			log.Printf("*** Arb Opportunity: %.4f for %.2f on %s vs %s ***\n", best.bid.adjPrice-best.ask.adjPrice, amount, best.bid.exg, best.ask.exg)
+			sendPair(best.bid, best.ask, amount)
+			calcNetPosition()
+		} else if (best.bid.exg.Position() >= cfg.Sec.MinOrder && best.ask.exg.Position() <= -cfg.Sec.MinOrder) &&
+			(best.bid.adjPrice-best.ask.adjPrice >= cfg.Sec.ExitArb) {
+			// If inter-exchange position can be exited, trade pair
+			available := math.Min(best.bid.amount, best.ask.amount)
+			needed := math.Min(best.bid.exg.Position(), -best.ask.exg.Position())
+			amount := math.Min(available, needed)
+			log.Printf("*** Exit Opportunity: %.4f for %.2f on %s vs %s ***\n", best.bid.adjPrice-best.ask.adjPrice, amount, best.bid.exg, best.ask.exg)
+			sendPair(best.bid, best.ask, amount)
+			calcNetPosition()
+		}
 	}
 }
 
