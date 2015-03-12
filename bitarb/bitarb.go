@@ -132,6 +132,9 @@ func main() {
 	go checkStdin(doneChan)
 	go considerTrade(marketChan)
 	handleData(marketChan, doneChan)
+	// Fini
+	savePositions()
+	closeLogFile()
 }
 
 // Check for any user input
@@ -276,6 +279,10 @@ func considerTrade(marketChan <-chan bestMarket) {
 			sendPair(best.bid, best.ask, amount)
 			calcNetPosition()
 		}
+
+		if cfg.Sec.PrintOn {
+			printResults(best)
+		}
 	}
 }
 
@@ -360,7 +367,7 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 }
 
 // Print relevant data to terminal
-func printResults(bestBid, bestAsk market) {
+func printResults(best bestMarket) {
 	clearScreen()
 
 	fmt.Println("   Positions:")
@@ -371,9 +378,9 @@ func printResults(bestBid, bestAsk market) {
 	fmt.Println("----------------")
 	fmt.Println("\nBest Market:")
 	fmt.Printf("%v %.4f (%.4f) for %.2f / %.2f at %.4f (%.4f) %v\n",
-		bestBid.exg, bestBid.orderPrice, bestBid.adjPrice, bestBid.amount, bestAsk.amount, bestAsk.orderPrice, bestAsk.adjPrice, bestAsk.exg)
+		best.bid.exg, best.bid.orderPrice, best.bid.adjPrice, best.bid.amount, best.ask.amount, best.ask.orderPrice, best.ask.adjPrice, best.ask.exg)
 	fmt.Println("\nOpportunity:")
-	fmt.Printf("%.4f for %.2f\n", bestBid.adjPrice-bestAsk.adjPrice, math.Min(bestBid.amount, bestAsk.amount))
+	fmt.Printf("%.4f for %.2f\n", best.bid.adjPrice-best.ask.adjPrice, math.Min(best.bid.amount, best.ask.amount))
 	fmt.Printf("\nRun P&L: $%.2f\n", pl)
 }
 
