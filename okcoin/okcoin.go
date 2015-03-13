@@ -81,14 +81,14 @@ func (ok *OKCoin) CommunicateBook(bookChan chan<- *exchange.Book, doneChan <-cha
 	// Connect to websocket
 	ws, _, err := websocket.DefaultDialer.Dial(websocketURL, http.Header{})
 	if err != nil {
-		return fmt.Errorf("OKCoin CommunicateBook error: %s", err)
+		return fmt.Errorf("OKCoin CommunicateBook error: %s\n", err)
 	}
 
 	// Send request for book data
 	channel := fmt.Sprintf("ok_%s%s_depth", ok.symbol, ok.currency)
 	initMessage := request{Event: "addChannel", Channel: channel}
 	if err = ws.WriteJSON(initMessage); err != nil {
-		return fmt.Errorf("OKCoin CommunicateBook error: %s", err)
+		return fmt.Errorf("OKCoin CommunicateBook error: %s\n", err)
 	}
 
 	// Run a read loop in new goroutine
@@ -135,6 +135,7 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan
 			_, data, err := (<-getWS).ReadMessage()
 			if err != nil {
 				// Reconnect on error
+				log.Printf("OKCoin WebSocket error %s\n", err)
 				reconnectWS <- true
 			} else if string(data) != `{"event":"pong"}` {
 				// If not a pong, send for processing
@@ -156,6 +157,7 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan
 			useWS <- true
 			if err := (<-getWS).WriteMessage(1, ping); err != nil {
 				// Reconnect on error
+				log.Printf("OKCoin WebSocket error %s\n", err)
 				reconnectWS <- true
 			}
 		case data := <-dataChan:
@@ -176,7 +178,7 @@ func reconnect(initMessage request) *websocket.Conn {
 	}
 	// Keep trying on error
 	for err != nil {
-		log.Println(err)
+		log.Printf("OKCoin WebSocket error %s\n", err)
 		time.Sleep(5 * time.Second)
 		ws, _, err = websocket.DefaultDialer.Dial(websocketURL, http.Header{})
 		if err == nil {
@@ -204,12 +206,12 @@ func (ok *OKCoin) convertToBook(data []byte) *exchange.Book {
 		} `json:"data"` // Data specific to channel
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return &exchange.Book{Error: fmt.Errorf("OKCoin book error: %s", err.Error())}
+		return &exchange.Book{Error: fmt.Errorf("OKCoin book error: %s\n", err)}
 	}
 
 	// Return error if there is an exchange error code
 	if resp[0].ErrorCode != 0 {
-		return &exchange.Book{Error: fmt.Errorf("OKCoin book error code: %d", resp[0].ErrorCode)}
+		return &exchange.Book{Error: fmt.Errorf("OKCoin book error code: %d\n", resp[0].ErrorCode)}
 	}
 
 	// Translate into exchange.Book structure
@@ -250,7 +252,7 @@ func (ok *OKCoin) SendOrder(action, otype string, amount, price float64) (int64,
 	// Send post request
 	data, err := ok.post(restURL+"trade.do", params)
 	if err != nil {
-		return 0, errors.New("OKCoin SendOrder error: " + err.Error())
+		return 0, fmt.Errorf("OKCoin SendOrder error: %s\n", err)
 	}
 
 	// Unmarshal response
@@ -259,10 +261,10 @@ func (ok *OKCoin) SendOrder(action, otype string, amount, price float64) (int64,
 		ErrorCode int64 `json:"error_code"`
 	}
 	if err := json.Unmarshal(data, &response); err != nil {
-		return 0, errors.New("OKCoin SendOrder error: " + err.Error())
+		return 0, fmt.Errorf("OKCoin SendOrder error: %s\n", err)
 	}
 	if response.ErrorCode != 0 {
-		return 0, fmt.Errorf("OKCoin SendOrder error code: %d", response.ErrorCode)
+		return 0, fmt.Errorf("OKCoin SendOrder error code: %d\n", response.ErrorCode)
 	}
 
 	return response.ID, nil
@@ -278,7 +280,7 @@ func (ok *OKCoin) CancelOrder(id int64) (bool, error) {
 	// Send post request
 	data, err := ok.post(restURL+"cancel_order.do", params)
 	if err != nil {
-		return false, errors.New("OKCoin CancelOrder error: " + err.Error())
+		return false, fmt.Errorf("OKCoin CancelOrder error: %s\n", err)
 	}
 
 	// Unmarshal response
@@ -287,10 +289,10 @@ func (ok *OKCoin) CancelOrder(id int64) (bool, error) {
 		ErrorCode int64 `json:"error_code"`
 	}
 	if err := json.Unmarshal(data, &response); err != nil {
-		return false, errors.New("OKCoin CancelOrder error: " + err.Error())
+		return false, fmt.Errorf("OKCoin CancelOrder error: %s\n", err)
 	}
 	if response.ErrorCode != 0 {
-		return false, fmt.Errorf("OKCoin CancelOrder error code: %d", response.ErrorCode)
+		return false, fmt.Errorf("OKCoin CancelOrder error code: %d\n", response.ErrorCode)
 	}
 
 	return response.Result, nil
@@ -309,7 +311,7 @@ func (ok *OKCoin) GetOrderStatus(id int64) (exchange.Order, error) {
 	// Send post request
 	data, err := ok.post(restURL+"order_info.do", params)
 	if err != nil {
-		return order, errors.New("OKCoin GetOrderStatus error: " + err.Error())
+		return order, fmt.Errorf("OKCoin GetOrderStatus error: %s\n", err)
 	}
 
 	// Unmarshal response
@@ -321,10 +323,10 @@ func (ok *OKCoin) GetOrderStatus(id int64) (exchange.Order, error) {
 		ErrorCode int64 `json:"error_code"`
 	}
 	if err := json.Unmarshal(data, &response); err != nil {
-		return order, errors.New("OKCoin GetOrderStatus error: " + err.Error())
+		return order, fmt.Errorf("OKCoin GetOrderStatus error: %s\n", err)
 	}
 	if response.ErrorCode != 0 {
-		return order, fmt.Errorf("OKCoin GetOrderStatus error code: %d", response.ErrorCode)
+		return order, fmt.Errorf("OKCoin GetOrderStatus error code: %d\n", response.ErrorCode)
 	}
 
 	if response.Orders[0].Status == -1 || response.Orders[0].Status == 2 {
