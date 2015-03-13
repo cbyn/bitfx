@@ -23,8 +23,8 @@ type Config struct {
 	Sec struct {
 		Symbol      string  // Symbol to trade
 		Currency    string  // Underlying currency
-		EntryArb    float64 // Min arb amount to enter a position
-		ExitArb     float64 // Min arb amount to exit a position
+		MaxArb      float64 // Top limit for position entry
+		MinArb      float64 // Bottom limit for position exit
 		MaxPosition float64 // Max position size on any exchange
 		MinNetPos   float64 // Min acceptable net position
 		MinOrder    float64 // Min order size for arb trade
@@ -136,9 +136,11 @@ func main() {
 	// Launch goroutines
 	go checkStdin(doneChan)
 	go considerTrade(marketChan)
+
+	// Main data loop
 	handleData(marketChan, doneChan)
 
-	// Finished
+	// Finish
 	saveStatus()
 	closeLogFile()
 	fmt.Println("~~~ Fini ~~~")
@@ -151,13 +153,15 @@ func checkStdin(doneChan chan<- bool) {
 	doneChan <- true
 }
 
+// TODO: only store filtered book data
+
 // Handle book data from exchanges
 func handleData(marketChan chan<- bestMarket, doneChan <-chan bool) {
-	// Map storing current book data for each exchange
+	// Current book data for each exchange
 	books := make(map[exchange.Exchange]*exchange.Book)
 	// Channel to receive book data from exchanges
 	bookChan := make(chan *exchange.Book)
-	// Channel to notify exchanges when done
+	// Channel to notify exchanges when finished
 	exgDoneChan := make(chan bool, len(exchanges))
 
 	// Initiate communication with each exchange
@@ -190,6 +194,9 @@ func handleData(marketChan chan<- bestMarket, doneChan <-chan bool) {
 		}
 	}
 }
+
+// TODO: Change to return all best bids and asks subject to minOrder only
+// Exchange position is not thread safe!
 
 // Find best bid and ask subject to MinOrder and MaxPosition
 func findBestMarket(books map[exchange.Exchange]*exchange.Book) bestMarket {
@@ -224,6 +231,7 @@ func findBestMarket(books map[exchange.Exchange]*exchange.Book) bestMarket {
 			}
 		}
 		ableToBuy := math.Min(cfg.Sec.MaxPosition-exg.Position(), cfg.Sec.MaxOrder)
+
 		// If the exchange postition is not already max long, and data is not old
 		if ableToBuy >= cfg.Sec.MinOrder && time.Since(book.Time) < 30*time.Second {
 			// Loop through asks and aggregate amounts until required size
@@ -246,6 +254,9 @@ func findBestMarket(books map[exchange.Exchange]*exchange.Book) bestMarket {
 
 	return best
 }
+
+// TODO: Change to check every bid against every ask
+// Exchange position is not thread safe!
 
 // Send trade if arb exists or net position exists
 func considerTrade(marketChan <-chan bestMarket) {
@@ -270,14 +281,14 @@ func considerTrade(marketChan <-chan bestMarket) {
 			go fillOrKill(best.ask.exg, "buy", amount, best.ask.orderPrice, fillChan)
 			updatePL(best.ask.adjPrice, <-fillChan, "buy")
 			calcNetPosition()
-		} else if best.bid.adjPrice-best.ask.adjPrice >= cfg.Sec.EntryArb {
+		} else if best.bid.adjPrice-best.ask.adjPrice >= cfg.Sec.MaxArb {
 			// If arb exists, trade pair
 			amount := math.Min(best.bid.amount, best.ask.amount)
 			log.Printf("*** Arb Opportunity: %.4f for %.2f on %s vs %s ***\n", best.bid.adjPrice-best.ask.adjPrice, amount, best.bid.exg, best.ask.exg)
 			sendPair(best.bid, best.ask, amount)
 			calcNetPosition()
 		} else if (best.bid.exg.Position() >= cfg.Sec.MinOrder && best.ask.exg.Position() <= -cfg.Sec.MinOrder) &&
-			(best.bid.adjPrice-best.ask.adjPrice >= cfg.Sec.ExitArb) {
+			(best.bid.adjPrice-best.ask.adjPrice >= cfg.Sec.MinArb) {
 			// If inter-exchange position can be exited, trade pair
 			available := math.Min(best.bid.amount, best.ask.amount)
 			needed := math.Min(best.bid.exg.Position(), -best.ask.exg.Position())
@@ -291,6 +302,19 @@ func considerTrade(marketChan <-chan bestMarket) {
 			printResults(best)
 		}
 	}
+}
+
+// Calculate arb needed for a trade based on existing positions
+func calcNeededArb(buyExgPos, sellExgPos float64) float64 {
+	// Middle between user-defined min and max
+	center := (cfg.Sec.MaxArb + cfg.Sec.MinArb) / 2
+	// Half distance from center to min and max
+	halfDist := (cfg.Sec.MaxArb - center) / 2
+	// Percent of max allowed position for each
+	buyExgPct := buyExgPos / cfg.Sec.MaxPosition
+	sellExgPct := sellExgPos / cfg.Sec.MaxPosition
+
+	return center + buyExgPct*halfDist - sellExgPct*halfDist
 }
 
 // Logic for sending a pair of orders
