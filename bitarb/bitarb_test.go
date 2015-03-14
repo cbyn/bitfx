@@ -127,11 +127,11 @@ func TestFindBestBid(t *testing.T) {
 	markets[exg1] = filteredBook{bid: market{adjPrice: 2.00}}
 	markets[exg2] = filteredBook{bid: market{adjPrice: 1.99}}
 	markets[exg3] = filteredBook{bid: market{adjPrice: 1.98}}
-	if findBestBid(markets) != exg1 {
+	if math.Abs(findBestBid(markets).adjPrice-2.00) > .000001 {
 		t.Error("Returned wrong best bid")
 	}
 	exg1.SetPosition(-490)
-	if findBestBid(markets) != exg2 {
+	if math.Abs(findBestBid(markets).adjPrice-1.99) > .000001 {
 		t.Error("Returned wrong best bid after position update")
 	}
 }
@@ -144,11 +144,11 @@ func TestFindBestAsk(t *testing.T) {
 	markets[exg1] = filteredBook{ask: market{adjPrice: 1.98}}
 	markets[exg2] = filteredBook{ask: market{adjPrice: 1.99}}
 	markets[exg3] = filteredBook{ask: market{adjPrice: 2.00}}
-	if findBestAsk(markets) != exg1 {
+	if math.Abs(findBestAsk(markets).adjPrice-1.98) > .000001 {
 		t.Error("Returned wrong best ask")
 	}
 	exg1.SetPosition(490)
-	if findBestAsk(markets) != exg2 {
+	if math.Abs(findBestAsk(markets).adjPrice-1.99) > .000001 {
 		t.Error("Returned wrong best ask after position update")
 	}
 }
