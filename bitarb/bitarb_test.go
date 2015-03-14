@@ -124,7 +124,7 @@ func TestFindBestBid(t *testing.T) {
 	exg1 := okcoin.New("", "", "", "", 1, 0.002)
 	exg2 := okcoin.New("", "", "", "", 1, 0.002)
 	exg3 := okcoin.New("", "", "", "", 1, 0.002)
-	markets[exg1] = filteredBook{bid: market{adjPrice: 2.00}}
+	markets[exg1] = filteredBook{bid: market{adjPrice: 2.00, amount: 500}}
 	markets[exg2] = filteredBook{bid: market{adjPrice: 1.99}}
 	markets[exg3] = filteredBook{bid: market{adjPrice: 1.98}}
 	if math.Abs(findBestBid(markets).adjPrice-2.00) > .000001 {
@@ -134,6 +134,10 @@ func TestFindBestBid(t *testing.T) {
 	if math.Abs(findBestBid(markets).adjPrice-1.99) > .000001 {
 		t.Error("Returned wrong best bid after position update")
 	}
+	exg1.SetPosition(-250)
+	if math.Abs(findBestBid(markets).amount-250) > .000001 {
+		t.Error("Returned wrong best bid amount after position update")
+	}
 }
 
 func TestFindBestAsk(t *testing.T) {
@@ -141,7 +145,7 @@ func TestFindBestAsk(t *testing.T) {
 	exg1 := okcoin.New("", "", "", "", 1, 0.002)
 	exg2 := okcoin.New("", "", "", "", 1, 0.002)
 	exg3 := okcoin.New("", "", "", "", 1, 0.002)
-	markets[exg1] = filteredBook{ask: market{adjPrice: 1.98}}
+	markets[exg1] = filteredBook{ask: market{adjPrice: 1.98, amount: 500}}
 	markets[exg2] = filteredBook{ask: market{adjPrice: 1.99}}
 	markets[exg3] = filteredBook{ask: market{adjPrice: 2.00}}
 	if math.Abs(findBestAsk(markets).adjPrice-1.98) > .000001 {
@@ -149,6 +153,10 @@ func TestFindBestAsk(t *testing.T) {
 	}
 	exg1.SetPosition(490)
 	if math.Abs(findBestAsk(markets).adjPrice-1.99) > .000001 {
+		t.Error("Returned wrong best ask after position update")
+	}
+	exg1.SetPosition(250)
+	if math.Abs(findBestAsk(markets).amount-250) > .000001 {
 		t.Error("Returned wrong best ask after position update")
 	}
 }

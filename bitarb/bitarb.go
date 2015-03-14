@@ -190,6 +190,7 @@ func handleData(marketChan chan<- map[exchange.Exchange]filteredBook, doneChan <
 }
 
 // Filter book data down to tradable market
+// Adjusts market amounts according to MaxOrder
 func filterBook(bookRef *exchange.Book) filteredBook {
 	book := *bookRef
 	var fb filteredBook
@@ -281,20 +282,15 @@ func filterBook(bookRef *exchange.Book) filteredBook {
 // }
 //
 
-// Send trade if arb exists or net position exists
+// Trade if net position exists or arb exists
 func considerTrade(marketChan <-chan map[exchange.Exchange]filteredBook) {
 	for markets := range marketChan {
-		// If net long, find best bid and sell (subject to exchange pos)
-		// Else if net short, find best ask and buy (subject to exchange pos)
-		// Else for each exchange compare its bid to all other asks
-		// - find opportunity most over required arb
-
 		if netPosition >= cfg.Sec.MinNetPos {
 			// If net long, find best bid and sell
-			log.Println("***** Net long position exit *****")
 			bestBid := findBestBid(markets)
 			amount := math.Min(netPosition, bestBid.amount)
 			fillChan := make(chan float64)
+			log.Println("***** Net long position exit *****")
 			go fillOrKill(bestBid.exg, "sell", amount, bestBid.orderPrice, fillChan)
 			updatePL(bestBid.adjPrice, <-fillChan, "sell")
 			calcNetPosition()
@@ -303,10 +299,10 @@ func considerTrade(marketChan <-chan map[exchange.Exchange]filteredBook) {
 			}
 		} else if netPosition <= -cfg.Sec.MinNetPos {
 			// If net short, exit where possible
-			log.Println("***** Net short position exit *****")
 			bestAsk := findBestAsk(markets)
 			amount := math.Min(-netPosition, bestAsk.amount)
 			fillChan := make(chan float64)
+			log.Println("***** Net short position exit *****")
 			go fillOrKill(bestAsk.exg, "buy", amount, bestAsk.orderPrice, fillChan)
 			updatePL(bestAsk.adjPrice, <-fillChan, "buy")
 			calcNetPosition()
@@ -314,37 +310,33 @@ func considerTrade(marketChan <-chan map[exchange.Exchange]filteredBook) {
 				printResults()
 			}
 		} else {
-			// Check for opportunities
+			// Check for arb opportunities
+			if bestBid, bestAsk, exists := findBestArb(markets); exists {
+				amount := math.Min(bestBid.amount, bestAsk.amount)
+				log.Printf("***** Arb Opportunity: %.4f for %.2f on %s vs %s *****\n", bestBid.adjPrice-bestAsk.adjPrice, amount, bestBid.exg, bestAsk.exg)
+				sendPair(bestBid, bestAsk, amount)
+				calcNetPosition()
+				if cfg.Sec.PrintOn {
+					printResults()
+				}
+			}
 		}
-		// } else if best.bid.adjPrice-best.ask.adjPrice >= cfg.Sec.MaxArb {
-		// 	// If arb exists, trade pair
-		// 	amount := math.Min(best.bid.amount, best.ask.amount)
-		// 	log.Printf("*** Arb Opportunity: %.4f for %.2f on %s vs %s ***\n", best.bid.adjPrice-best.ask.adjPrice, amount, best.bid.exg, best.ask.exg)
-		// 	sendPair(best.bid, best.ask, amount)
-		// 	calcNetPosition()
-		// } else if (best.bid.exg.Position() >= cfg.Sec.MinOrder && best.ask.exg.Position() <= -cfg.Sec.MinOrder) &&
-		// 	(best.bid.adjPrice-best.ask.adjPrice >= cfg.Sec.MinArb) {
-		// 	// If inter-exchange position can be exited, trade pair
-		// 	available := math.Min(best.bid.amount, best.ask.amount)
-		// 	needed := math.Min(best.bid.exg.Position(), -best.ask.exg.Position())
-		// 	amount := math.Min(available, needed)
-		// 	log.Printf("*** Exit Opportunity: %.4f for %.2f on %s vs %s ***\n", best.bid.adjPrice-best.ask.adjPrice, amount, best.bid.exg, best.ask.exg)
-		// 	sendPair(best.bid, best.ask, amount)
-		// 	calcNetPosition()
-		// }
 	}
 }
 
 // Find best bid able to sell
+// Adjusts market amount according to exchange position
 func findBestBid(markets map[exchange.Exchange]filteredBook) market {
 	var bestBid market
 
 	for exg, fb := range markets {
+		ableToSell := exg.Position() + cfg.Sec.MaxPosition
 		// If not already max short
-		if exg.Position()+cfg.Sec.MaxPosition > cfg.Sec.MinOrder {
+		if ableToSell > cfg.Sec.MinOrder {
 			// If highest bid
 			if fb.bid.adjPrice > bestBid.adjPrice {
 				bestBid = fb.bid
+				bestBid.amount = math.Min(bestBid.amount, ableToSell)
 			}
 		}
 	}
@@ -353,17 +345,20 @@ func findBestBid(markets map[exchange.Exchange]filteredBook) market {
 }
 
 // Find best ask able to buy
+// Adjusts market amount according to exchange position
 func findBestAsk(markets map[exchange.Exchange]filteredBook) market {
 	var bestAsk market
 	// Need to start with a high number
 	bestAsk.adjPrice = math.MaxFloat64
 
 	for exg, fb := range markets {
+		ableToBuy := cfg.Sec.MaxPosition - exg.Position()
 		// If not already max long
-		if cfg.Sec.MaxPosition-exg.Position() > cfg.Sec.MinOrder {
+		if ableToBuy > cfg.Sec.MinOrder {
 			// If lowest ask
 			if fb.ask.adjPrice < bestAsk.adjPrice {
 				bestAsk = fb.ask
+				bestAsk.amount = math.Min(bestAsk.amount, ableToBuy)
 			}
 		}
 	}
@@ -372,7 +367,37 @@ func findBestAsk(markets map[exchange.Exchange]filteredBook) market {
 
 }
 
-func findBestArb() {
+// Find best arbitrage opportunity
+// Adjusts market amounts according to exchange positions
+func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bool) {
+	var bestBid, bestAsk market
+	bestOpp := 0.0
+	exists := false
+
+	// Compare each exchange bid to all other asks
+	for exg1, fb1 := range markets {
+		ableToSell := exg1.Position() + cfg.Sec.MaxPosition
+		// If exg1 is not already max short
+		if ableToSell > cfg.Sec.MinOrder {
+			for exg2, fb2 := range markets {
+				ableToBuy := cfg.Sec.MaxPosition - exg2.Position()
+				// If exg2 is not already max long
+				if ableToBuy > cfg.Sec.MinOrder {
+					opp := fb1.bid.adjPrice - fb2.ask.adjPrice - calcNeededArb(exg2.Position(), exg1.Position())
+					if opp > bestOpp {
+						bestBid = fb1.bid
+						bestBid.amount = math.Min(bestBid.amount, ableToSell)
+						bestAsk = fb2.ask
+						bestAsk.amount = math.Min(bestAsk.amount, ableToBuy)
+						exists = true
+						bestOpp = opp
+					}
+				}
+			}
+		}
+	}
+
+	return bestBid, bestAsk, exists
 }
 
 // Calculate arb needed for a trade based on existing positions
