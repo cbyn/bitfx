@@ -45,7 +45,7 @@ func TestCalculateNeededArb(t *testing.T) {
 
 func TestFilterBook(t *testing.T) {
 	testBook := &exchange.Book{
-		Exg: okcoin.New("", "", "", "", 2, 0.002),
+		Exg: okcoin.New("", "", "", "", 1, 0.002),
 		Bids: exchange.BidItems{
 			0: {Price: 1.90, Amount: 10},
 			1: {Price: 1.80, Amount: 10},
@@ -118,3 +118,55 @@ func TestFilterBook(t *testing.T) {
 		t.Errorf("Wrong ask adjusted price")
 	}
 }
+
+func TestFindBestBid(t *testing.T) {
+	markets := make(map[exchange.Exchange]filteredBook)
+	exg1 := okcoin.New("", "", "", "", 1, 0.002)
+	exg2 := okcoin.New("", "", "", "", 1, 0.002)
+	exg3 := okcoin.New("", "", "", "", 1, 0.002)
+	markets[exg1] = filteredBook{bid: market{adjPrice: 2.00}}
+	markets[exg2] = filteredBook{bid: market{adjPrice: 1.99}}
+	markets[exg3] = filteredBook{bid: market{adjPrice: 1.98}}
+	if findBestBid(markets) != exg1 {
+		t.Error("Returned wrong best bid")
+	}
+	exg1.SetPosition(-490)
+	if findBestBid(markets) != exg2 {
+		t.Error("Returned wrong best bid after position update")
+	}
+}
+
+func TestFindBestAsk(t *testing.T) {
+	markets := make(map[exchange.Exchange]filteredBook)
+	exg1 := okcoin.New("", "", "", "", 1, 0.002)
+	exg2 := okcoin.New("", "", "", "", 1, 0.002)
+	exg3 := okcoin.New("", "", "", "", 1, 0.002)
+	markets[exg1] = filteredBook{ask: market{adjPrice: 1.98}}
+	markets[exg2] = filteredBook{ask: market{adjPrice: 1.99}}
+	markets[exg3] = filteredBook{ask: market{adjPrice: 2.00}}
+	if findBestAsk(markets) != exg1 {
+		t.Error("Returned wrong best ask")
+	}
+	exg1.SetPosition(490)
+	if findBestAsk(markets) != exg2 {
+		t.Error("Returned wrong best ask after position update")
+	}
+}
+
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
