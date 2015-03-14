@@ -444,7 +444,7 @@ func printResults() {
 	for _, exg := range exchanges {
 		fmt.Printf("%-8s %7.2f\n", exg, exg.Position())
 	}
-	// fmt.Println("----------------")
+	fmt.Println("----------------")
 	fmt.Printf("\nRun P&L: $%.2f\n", pl)
 }
 
