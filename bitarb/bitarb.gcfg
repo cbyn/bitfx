@@ -1,8 +1,8 @@
 [sec]
 symbol      = "ltc" # Symbol to trade
 currency    = "usd" # Underlying currency
-maxArb    = .1 # Top limit for position entry
-minArb     = .1 # Bottom limit for position exit
+maxArb      = .1 # Top limit for position entry
+minArb      = .1 # Bottom limit for position exit
 maxPosition = 1 # Max position size on any exchange
 minNetPos   = .1 # Min acceptable net position
 minOrder    = 1 # Min order size for arb trade
