@@ -327,7 +327,7 @@ func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bo
 				// If exg2 is not already max long
 				if ableToBuy >= cfg.Sec.MinOrder {
 					opp := fb1.bid.adjPrice - fb2.ask.adjPrice - calcNeededArb(exg2.Position(), exg1.Position())
-					if opp > bestOpp {
+					if opp >= bestOpp {
 						bestBid = fb1.bid
 						bestBid.amount = math.Min(bestBid.amount, ableToSell)
 						bestAsk = fb2.ask
