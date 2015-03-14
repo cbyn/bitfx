@@ -130,7 +130,7 @@ func main() {
 
 	// Launch goroutines
 	go checkStdin(doneChan)
-	// go considerTrade(marketChan)
+	go considerTrade(marketChan)
 
 	// Main data loop
 	handleData(marketChan, doneChan)
