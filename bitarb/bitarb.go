@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	// "time"
 )
 
 // Config stores user configuration
@@ -224,63 +223,7 @@ func filterBook(bookRef *exchange.Book) filteredBook {
 	return fb
 }
 
-// // Find best bid and ask subject to MinOrder and MaxPosition
-// func findBestMarkets(books map[exchange.Exchange]*exchange.Book) bestMarket {
-// 	var (
-// 		best bestMarket
-// 		book exchange.Book
-// 	)
-// 	// Need to start with a high price for ask
-// 	best.ask.adjPrice = math.MaxFloat64
-//
-// 	// Loop through exchanges
-// 	for _, exg := range exchanges {
-// 		book = *books[exg]
-// 		ableToSell := math.Min(cfg.Sec.MaxPosition+exg.Position(), cfg.Sec.MaxOrder)
-//
-// 		// If the exchange postition is not already max short, and data is not old
-// 		if ableToSell >= cfg.Sec.MinOrder && time.Since(book.Time) < 30*time.Second {
-// 			// Loop through bids and aggregate amounts until required size
-// 			var amount, aggPrice float64
-// 			for _, bid := range book.Bids {
-// 				// adjPrice is the amount-weighted average subject to ableToSell
-// 				aggPrice += bid.Price * math.Min(ableToSell-amount, bid.Amount)
-// 				amount += math.Min(ableToSell-amount, bid.Amount)
-// 				if amount >= cfg.Sec.MinOrder {
-// 					// Set as best bid if adjusted price is highest
-// 					adjPrice := (aggPrice / amount) * (1 - exg.Fee())
-// 					if adjPrice > best.bid.adjPrice {
-// 						best.bid = market{exg, bid.Price, amount, adjPrice}
-// 					}
-// 					break
-// 				}
-// 			}
-// 		}
-// 		ableToBuy := math.Min(cfg.Sec.MaxPosition-exg.Position(), cfg.Sec.MaxOrder)
-//
-// 		// If the exchange postition is not already max long, and data is not old
-// 		if ableToBuy >= cfg.Sec.MinOrder && time.Since(book.Time) < 30*time.Second {
-// 			// Loop through asks and aggregate amounts until required size
-// 			var amount, aggPrice float64
-// 			for _, ask := range book.Asks {
-// 				// adjPrice is the amount-weighted average subject to ableToBuy
-// 				aggPrice += ask.Price * math.Min(ableToBuy-amount, ask.Amount)
-// 				amount += math.Min(ableToBuy-amount, ask.Amount)
-// 				if amount >= cfg.Sec.MinOrder {
-// 					// Set as best ask if adjusted price is lowest
-// 					adjPrice := (aggPrice / amount) * (1 + exg.Fee())
-// 					if adjPrice < best.ask.adjPrice {
-// 						best.ask = market{exg, ask.Price, amount, adjPrice}
-// 					}
-// 					break
-// 				}
-// 			}
-// 		}
-// 	}
-//
-// 	return best
-// }
-//
+// TODO: Check that data is not old?
 
 // Trade if net position exists or arb exists
 func considerTrade(marketChan <-chan map[exchange.Exchange]filteredBook) {
@@ -332,7 +275,7 @@ func findBestBid(markets map[exchange.Exchange]filteredBook) market {
 	for exg, fb := range markets {
 		ableToSell := exg.Position() + cfg.Sec.MaxPosition
 		// If not already max short
-		if ableToSell > cfg.Sec.MinOrder {
+		if ableToSell >= cfg.Sec.MinOrder {
 			// If highest bid
 			if fb.bid.adjPrice > bestBid.adjPrice {
 				bestBid = fb.bid
@@ -354,7 +297,7 @@ func findBestAsk(markets map[exchange.Exchange]filteredBook) market {
 	for exg, fb := range markets {
 		ableToBuy := cfg.Sec.MaxPosition - exg.Position()
 		// If not already max long
-		if ableToBuy > cfg.Sec.MinOrder {
+		if ableToBuy >= cfg.Sec.MinOrder {
 			// If lowest ask
 			if fb.ask.adjPrice < bestAsk.adjPrice {
 				bestAsk = fb.ask
@@ -378,11 +321,11 @@ func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bo
 	for exg1, fb1 := range markets {
 		ableToSell := exg1.Position() + cfg.Sec.MaxPosition
 		// If exg1 is not already max short
-		if ableToSell > cfg.Sec.MinOrder {
+		if ableToSell >= cfg.Sec.MinOrder {
 			for exg2, fb2 := range markets {
 				ableToBuy := cfg.Sec.MaxPosition - exg2.Position()
 				// If exg2 is not already max long
-				if ableToBuy > cfg.Sec.MinOrder {
+				if ableToBuy >= cfg.Sec.MinOrder {
 					opp := fb1.bid.adjPrice - fb2.ask.adjPrice - calcNeededArb(exg2.Position(), exg1.Position())
 					if opp > bestOpp {
 						bestBid = fb1.bid
@@ -503,11 +446,6 @@ func printResults() {
 		fmt.Printf("%-8s %7.2f\n", exg, exg.Position())
 	}
 	// fmt.Println("----------------")
-	// fmt.Println("\nBest Market:")
-	// fmt.Printf("%v %.4f (%.4f) for %.2f / %.2f at %.4f (%.4f) %v\n",
-	// 	best.bid.exg, best.bid.orderPrice, best.bid.adjPrice, best.bid.amount, best.ask.amount, best.ask.orderPrice, best.ask.adjPrice, best.ask.exg)
-	// fmt.Println("\nOpportunity:")
-	// fmt.Printf("%.4f for %.2f\n", best.bid.adjPrice-best.ask.adjPrice, math.Min(best.bid.amount, best.ask.amount))
 	fmt.Printf("\nRun P&L: $%.2f\n", pl)
 }
 

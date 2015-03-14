@@ -9,8 +9,8 @@ import (
 )
 
 func init() {
-	cfg.Sec.MaxArb = 2
-	cfg.Sec.MinArb = -1
+	cfg.Sec.MaxArb = .02
+	cfg.Sec.MinArb = -.01
 	cfg.Sec.MaxPosition = 500
 	cfg.Sec.MinOrder = 25
 	cfg.Sec.MaxOrder = 50
@@ -22,23 +22,23 @@ type neededArb struct {
 
 func TestCalculateNeededArb(t *testing.T) {
 	neededArbTests := []neededArb{
-		{500, -500, 2},
-		{-500, 500, -1},
-		{500, 500, .5},
-		{-100, -100, .5},
-		{0, 0, .5},
-		{-250, 250, -.25},
-		{250, -250, 1.25},
-		{100, -100, .8},
-		{0, -200, .8},
-		{-200, 0, .2},
-		{-100, 100, .2},
+		{500, -500, .02},
+		{-500, 500, -.01},
+		{500, 500, .005},
+		{-100, -100, .005},
+		{0, 0, .005},
+		{-250, 250, -.0025},
+		{250, -250, .0125},
+		{100, -100, .008},
+		{0, -200, .008},
+		{-200, 0, .002},
+		{-100, 100, .002},
 	}
 
 	for _, neededArb := range neededArbTests {
 		arb := calcNeededArb(neededArb.buyExgPos, neededArb.sellExgPos)
 		if math.Abs(arb-neededArb.arb) > .000001 {
-			t.Errorf("For %.2f / %.2f expect %.2f, got %.2f\n", neededArb.buyExgPos, neededArb.sellExgPos, neededArb.arb, arb)
+			t.Errorf("For %.4f / %.4f expect %.4f, got %.4f\n", neededArb.buyExgPos, neededArb.sellExgPos, neededArb.arb, arb)
 		}
 	}
 }
@@ -161,20 +161,66 @@ func TestFindBestAsk(t *testing.T) {
 	}
 }
 
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
+func TestFindBestArb(t *testing.T) {
+	// No opportunity
+	markets := make(map[exchange.Exchange]filteredBook)
+	exg1 := okcoin.New("", "", "", "", 1, 0.002)
+	exg2 := okcoin.New("", "", "", "", 1, 0.002)
+	exg3 := okcoin.New("", "", "", "", 1, 0.002)
+	markets[exg1] = filteredBook{
+		bid: market{adjPrice: 1.98, amount: 50, exg: exg1},
+		ask: market{adjPrice: 2.00, amount: 50, exg: exg1},
+	}
+	markets[exg2] = filteredBook{
+		bid: market{adjPrice: 1.99, amount: 50, exg: exg2},
+		ask: market{adjPrice: 2.01, amount: 50, exg: exg2},
+	}
+	markets[exg3] = filteredBook{
+		bid: market{adjPrice: 2.00, amount: 50, exg: exg3},
+		ask: market{adjPrice: 2.02, amount: 50, exg: exg3},
+	}
+	if _, _, exists := findBestArb(markets); exists {
+		t.Errorf("Should be no arb opportunity")
+	}
+	// Change positions to create an exit opportunity
+	exg1.SetPosition(-500)
+	exg3.SetPosition(500)
+	bestBid, bestAsk, exists := findBestArb(markets)
+	if !exists || bestBid.exg != exg3 || bestAsk.exg != exg1 {
+		t.Errorf("Should be an exit opportunity after position update")
+	}
+	exg1.SetPosition(0)
+	exg3.SetPosition(0)
+
+	// Create an arb opportunity
+	markets[exg1] = filteredBook{
+		bid: market{adjPrice: 2.03, amount: 50, exg: exg1},
+		ask: market{adjPrice: 2.04, amount: 50, exg: exg1},
+	}
+	markets[exg2] = filteredBook{
+		bid: market{adjPrice: 2.04, amount: 50, exg: exg2},
+		ask: market{adjPrice: 2.05, amount: 50, exg: exg2},
+	}
+	markets[exg3] = filteredBook{
+		bid: market{adjPrice: 1.99, amount: 50, exg: exg3},
+		ask: market{adjPrice: 2.00, amount: 50, exg: exg3},
+	}
+	bestBid, bestAsk, exists = findBestArb(markets)
+	if !exists || bestBid.exg != exg2 || bestAsk.exg != exg3 {
+		t.Errorf("Should be an arb opportunity")
+	}
+
+	// Set exg3 postion to only allow for 30 more
+	exg3.SetPosition(470)
+	_, bestAsk, _ = findBestArb(markets)
+	if math.Abs(bestAsk.amount-30) > .000001 {
+		t.Errorf("Should be a decrease in best ask amount")
+	}
+
+	// Change exg3 postion
+	exg2.SetPosition(-500)
+	bestBid, _, _ = findBestArb(markets)
+	if bestBid.exg != exg1 {
+		t.Errorf("Best bid exchange should have changed")
+	}
+}
