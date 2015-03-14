@@ -162,7 +162,6 @@ func handleData(marketChan chan<- map[exchange.Exchange]filteredBook, doneChan <
 		if err := exg.CommunicateBook(bookChan, exgDoneChan); err != nil {
 			log.Fatal(err)
 		}
-		markets[exg] = filteredBook{}
 	}
 
 	for {
