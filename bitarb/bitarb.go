@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"time"
 )
 
 // Config stores user configuration
@@ -123,17 +124,19 @@ func main() {
 	setStatus()
 	calcNetPosition()
 
-	// For communicating best markets
-	marketChan := make(chan map[exchange.Exchange]filteredBook)
 	// For notifying termination (on any user input)
 	doneChan := make(chan bool)
+	// For communicating market data
+	requestData := make(chan exchange.Exchange)
+	receiveData := make(chan filteredBook)
+	newData := make(chan bool)
 
 	// Launch goroutines
 	go checkStdin(doneChan)
-	go considerTrade(marketChan)
+	go considerTrade(requestData, receiveData, newData)
 
 	// Main data loop
-	handleData(marketChan, doneChan)
+	handleData(requestData, receiveData, newData, doneChan)
 
 	// Finish
 	saveStatus()
@@ -149,8 +152,8 @@ func checkStdin(doneChan chan<- bool) {
 }
 
 // Handle book data from exchanges
-func handleData(marketChan chan<- map[exchange.Exchange]filteredBook, doneChan <-chan bool) {
-	// Current relevant market data for each exchange
+func handleData(requestData <-chan exchange.Exchange, receiveData chan<- filteredBook, newData chan<- bool, doneChan <-chan bool) {
+	// Map of data for each exchange
 	markets := make(map[exchange.Exchange]filteredBook)
 	// Channel to receive book data from exchanges
 	bookChan := make(chan exchange.Book)
@@ -166,22 +169,25 @@ func handleData(marketChan chan<- map[exchange.Exchange]filteredBook, doneChan <
 
 	for {
 		select {
-		// Receive data from an exchange
+		// Incoming data from an exchange
 		case book := <-bookChan:
 			if !isError(book.Error) {
 				markets[book.Exg] = filterBook(book)
-				// Send if ready to be used, otherwise discard
+				// Notify of new data if receiver is not busy
 				select {
-				case marketChan <- markets:
+				case newData <- true:
 				default:
 				}
 			}
-		// Finish
+		// New request for data
+		case exg := <-requestData:
+			receiveData <- markets[exg]
+		// User kill notification
 		case <-doneChan:
 			for range exchanges {
 				exgDoneChan <- true
 			}
-			close(marketChan)
+			close(newData)
 			return
 		}
 	}
@@ -224,8 +230,18 @@ func filterBook(book exchange.Book) filteredBook {
 // TODO: Check that data is not old?
 
 // Trade if net position exists or arb exists
-func considerTrade(marketChan <-chan map[exchange.Exchange]filteredBook) {
-	for markets := range marketChan {
+func considerTrade(requestData chan<- exchange.Exchange, receiveData <-chan filteredBook, newData <-chan bool) {
+	// Map of data for each exchange
+	markets := make(map[exchange.Exchange]filteredBook)
+	// Wait for data initialization
+	time.Sleep(5 * time.Second)
+
+	for range newData {
+		// Build snapshot of latest data
+		for _, exg := range exchanges {
+			requestData <- exg
+			markets[exg] = <-receiveData
+		}
 		if netPosition >= cfg.Sec.MinNetPos {
 			// If net long, find best bid and sell
 			bestBid := findBestBid(markets)
