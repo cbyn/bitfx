@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var book *exchange.Book
+var book exchange.Book
 var ok = New(os.Getenv("OKCOIN_KEY"), os.Getenv("OKCOIN_SECRET"), "ltc", "usd", 1, 0.002)
 
 func TestPriority(t *testing.T) {
@@ -35,7 +35,7 @@ func TestUpdatePositon(t *testing.T) {
 }
 
 func TestCommunicateBook(t *testing.T) {
-	bookChan := make(chan *exchange.Book)
+	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
 	err := ok.CommunicateBook(bookChan, doneChan)
 	if err != nil {
@@ -125,7 +125,7 @@ func TestNewOrder(t *testing.T) {
 	if id != 0 {
 		t.Fatal("Expected id = 0")
 	}
-	if err.Error() != "OKCoin SendOrder error code: 10008" {
-		t.Fatal("Expected error 'OKCoin SendOrder error code: 10008' on bad order")
+	if err == nil {
+		t.Fatal("Expected error on bad order")
 	}
 }
