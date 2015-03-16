@@ -271,7 +271,7 @@ func considerTrade(requestData chan<- exchange.Exchange, receiveData <-chan filt
 			// Check for arb opportunities
 			if bestBid, bestAsk, exists := findBestArb(markets); exists {
 				amount := math.Min(bestBid.amount, bestAsk.amount)
-				log.Printf("***** Arb Opportunity: %.4f for %.2f on %s vs %s *****\n",
+				log.Printf("***** Arb Opportunity: %.4f for %.4f on %s vs %s *****\n",
 					bestBid.adjPrice-bestAsk.adjPrice, amount, bestAsk.exg, bestBid.exg)
 				sendPair(bestBid, bestAsk, amount)
 				calcNetPosition()
@@ -447,7 +447,7 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 		exg.SetPosition(position)
 	}
 	// Print to log
-	log.Printf("%s trade: %s %.2f at %.4f\n", exg, action, order.FilledAmount, price)
+	log.Printf("%s trade: %s %.4f at %.4f\n", exg, action, order.FilledAmount, price)
 
 	fillChan <- order.FilledAmount
 }
@@ -459,7 +459,7 @@ func printResults() {
 	fmt.Println("   Positions:")
 	fmt.Println("----------------")
 	for _, exg := range exchanges {
-		fmt.Printf("%-8s %7.2f\n", exg, exg.Position())
+		fmt.Printf("%-8s %7.4f\n", exg, exg.Position())
 	}
 	fmt.Println("----------------")
 	fmt.Printf("\nRun P&L: $%.2f\n", pl)
