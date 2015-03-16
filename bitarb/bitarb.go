@@ -118,25 +118,25 @@ func calcNetPosition() {
 func main() {
 	fmt.Println("Running...")
 
+	// Initialization
 	setConfig()
 	setLog()
 	setExchanges()
 	setStatus()
 	calcNetPosition()
 
-	// For notifying termination (on any user input)
-	doneChan := make(chan bool)
-	// For communicating market data
+	// Notify termination on user input
+	doneChan := make(chan bool, 1)
+	go checkStdin(doneChan)
+
+	// Communicate market data
 	requestData := make(chan exchange.Exchange)
 	receiveData := make(chan filteredBook)
 	newData := make(chan bool)
+	go handleData(requestData, receiveData, newData, doneChan)
 
-	// Launch goroutines
-	go checkStdin(doneChan)
-	go considerTrade(requestData, receiveData, newData)
-
-	// Main data loop
-	handleData(requestData, receiveData, newData, doneChan)
+	// Check for opportunities
+	considerTrade(requestData, receiveData, newData)
 
 	// Finish
 	saveStatus()
@@ -201,10 +201,10 @@ func filterBook(book exchange.Book) filteredBook {
 	// Loop through bids and aggregate amounts until required size
 	var amount, aggPrice float64
 	for _, bid := range book.Bids {
-		// adjPrice is the amount-weighted average subject to MaxOrder
 		aggPrice += bid.Price * math.Min(cfg.Sec.MaxOrder-amount, bid.Amount)
 		amount += math.Min(cfg.Sec.MaxOrder-amount, bid.Amount)
 		if amount >= cfg.Sec.MinOrder {
+			// Amount-weighted average subject to MaxOrder, adjusted for fees
 			adjPrice := (aggPrice / amount) * (1 - book.Exg.Fee())
 			fb.bid = market{book.Exg, bid.Price, amount, adjPrice}
 			break
@@ -214,10 +214,10 @@ func filterBook(book exchange.Book) filteredBook {
 	// Loop through asks and aggregate amounts until required size
 	amount, aggPrice = 0, 0
 	for _, ask := range book.Asks {
-		// adjPrice is the amount-weighted average subject to MaxOrder
 		aggPrice += ask.Price * math.Min(cfg.Sec.MaxOrder-amount, ask.Amount)
 		amount += math.Min(cfg.Sec.MaxOrder-amount, ask.Amount)
 		if amount >= cfg.Sec.MinOrder {
+			// Amount-weighted average subject to MaxOrder, adjusted for fees
 			adjPrice := (aggPrice / amount) * (1 + book.Exg.Fee())
 			fb.ask = market{book.Exg, ask.Price, amount, adjPrice}
 			break
@@ -236,14 +236,15 @@ func considerTrade(requestData chan<- exchange.Exchange, receiveData <-chan filt
 	// Wait for data initialization
 	time.Sleep(5 * time.Second)
 
+	// Check for trade whenever new data is available
 	for range newData {
-		// Build snapshot of latest data
+		// Build local snapshot of latest data
 		for _, exg := range exchanges {
 			requestData <- exg
 			markets[exg] = <-receiveData
 		}
 		if netPosition >= cfg.Sec.MinNetPos {
-			// If net long, find best bid and sell
+			// If net long, hit best bid
 			bestBid := findBestBid(markets)
 			amount := math.Min(netPosition, bestBid.amount)
 			fillChan := make(chan float64)
@@ -255,7 +256,7 @@ func considerTrade(requestData chan<- exchange.Exchange, receiveData <-chan filt
 				printResults()
 			}
 		} else if netPosition <= -cfg.Sec.MinNetPos {
-			// If net short, exit where possible
+			// If net short, lift best ask
 			bestAsk := findBestAsk(markets)
 			amount := math.Min(-netPosition, bestAsk.amount)
 			fillChan := make(chan float64)
@@ -270,7 +271,8 @@ func considerTrade(requestData chan<- exchange.Exchange, receiveData <-chan filt
 			// Check for arb opportunities
 			if bestBid, bestAsk, exists := findBestArb(markets); exists {
 				amount := math.Min(bestBid.amount, bestAsk.amount)
-				log.Printf("***** Arb Opportunity: %.4f for %.2f on %s vs %s *****\n", bestBid.adjPrice-bestAsk.adjPrice, amount, bestBid.exg, bestAsk.exg)
+				log.Printf("***** Arb Opportunity: %.4f for %.2f on %s vs %s *****\n",
+					bestBid.adjPrice-bestAsk.adjPrice, amount, bestAsk.exg, bestBid.exg)
 				sendPair(bestBid, bestAsk, amount)
 				calcNetPosition()
 				if cfg.Sec.PrintOn {
@@ -331,7 +333,7 @@ func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bo
 	bestOpp := 0.0
 	exists := false
 
-	// Compare each exchange bid to all other asks
+	// Compare each bid to all other asks
 	for exg1, fb1 := range markets {
 		ableToSell := exg1.Position() + cfg.Sec.MaxPosition
 		// If exg1 is not already max short
@@ -426,6 +428,7 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 	}
 	// Check status and cancel if necessary
 	for {
+		// Continues until order status is non-empty
 		order, err = exg.GetOrderStatus(id)
 		isError(err)
 		if order.Status == "live" {
@@ -434,7 +437,6 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 		} else if order.Status == "dead" {
 			break
 		}
-		// Continues while order status is empty
 	}
 	// Update position
 	if action == "buy" {
