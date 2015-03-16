@@ -76,42 +76,53 @@ func (bf *Bitfinex) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-ch
 
 // HTTP read loop
 func (bf *Bitfinex) runLoop(bookChan chan<- exchange.Book, doneChan <-chan bool) {
+	// Used to compare timestamps
+	oldTimestamps := make([]float64, 40)
+
 	for {
 		select {
 		case <-doneChan:
 			close(bookChan)
 			return
 		default:
-			bookChan <- bf.getBook()
+			book, newTimestamps := bf.getBook()
+			if bookChanged(oldTimestamps, newTimestamps) {
+				bookChan <- book
+			}
+			oldTimestamps = newTimestamps
 		}
 	}
 }
 
 // Get book data with an http request
-func (bf *Bitfinex) getBook() exchange.Book {
-	// Get date
+func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
+	// Used to compare timestamps
+	timestamps := make([]float64, 40)
+
+	// Send get request
 	url := fmt.Sprintf("%sbook/%s%s?limit_bids=%d&limit_asks=%d", URL, bf.symbol, bf.currency, 20, 20)
 	data, err := get(url)
 	if err != nil {
-		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}
+		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}, timestamps
 	}
 
-	// Unmarshal into exchange book structure
 	var tmp struct {
 		Bids []struct {
-			Price  float64 `json:"price,string"`
-			Amount float64 `json:"amount,string"`
+			Price     float64 `json:"price,string"`
+			Amount    float64 `json:"amount,string"`
+			Timestamp float64 `json:"timestamp,string"`
 		} `json:"bids"`
 		Asks []struct {
-			Price  float64 `json:"price,string"`
-			Amount float64 `json:"amount,string"`
+			Price     float64 `json:"price,string"`
+			Amount    float64 `json:"amount,string"`
+			Timestamp float64 `json:"timestamp,string"`
 		} `json:"asks"`
 	}
+
 	if err := json.Unmarshal(data, &tmp); err != nil {
-		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}
+		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}, timestamps
 	}
 
-	// Convert into exchange.Book structure
 	bids := make(exchange.BidItems, 20)
 	asks := make(exchange.AskItems, 20)
 	for i := 0; i < 20; i++ {
@@ -119,7 +130,10 @@ func (bf *Bitfinex) getBook() exchange.Book {
 		bids[i].Amount = tmp.Bids[i].Amount
 		asks[i].Price = tmp.Asks[i].Price
 		asks[i].Amount = tmp.Asks[i].Amount
+		timestamps[i] = tmp.Bids[i].Timestamp
+		timestamps[i+20] = tmp.Asks[i].Timestamp
 	}
+
 	sort.Sort(bids)
 	sort.Sort(asks)
 
@@ -130,7 +144,16 @@ func (bf *Bitfinex) getBook() exchange.Book {
 		Bids:  bids,
 		Asks:  asks,
 		Error: nil,
+	}, timestamps
+}
+
+func bookChanged(timestamps1, timestamps2 []float64) bool {
+	for i := 0; i < 40; i++ {
+		if math.Abs(timestamps1[i]-timestamps2[i]) > .5 {
+			return true
+		}
 	}
+	return false
 }
 
 // SendOrder to the exchange

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var book *exchange.Book
+var book exchange.Book
 var bf = New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), "ltc", "usd", 2, 0.001)
 
 func TestPriority(t *testing.T) {
@@ -35,7 +35,7 @@ func TestUpdatePositon(t *testing.T) {
 }
 
 func TestCommunicateBook(t *testing.T) {
-	bookChan := make(chan *exchange.Book)
+	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
 	err := bf.CommunicateBook(bookChan, doneChan)
 	if err != nil {
