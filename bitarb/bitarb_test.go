@@ -44,7 +44,7 @@ func TestCalculateNeededArb(t *testing.T) {
 }
 
 func TestFilterBook(t *testing.T) {
-	testBook := &exchange.Book{
+	testBook := exchange.Book{
 		Exg: okcoin.New("", "", "", "", 1, 0.002),
 		Bids: exchange.BidItems{
 			0: {Price: 1.90, Amount: 10},
@@ -81,7 +81,7 @@ func TestFilterBook(t *testing.T) {
 		t.Errorf("Wrong ask adjusted price")
 	}
 
-	testBook = &exchange.Book{
+	testBook = exchange.Book{
 		Exg: okcoin.New("", "", "", "", 2, 0.002),
 		Bids: exchange.BidItems{
 			0: {Price: 1.90, Amount: 30},
