@@ -67,7 +67,7 @@ func (bf *Bitfinex) Position() float64 {
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel
-func (bf *Bitfinex) CommunicateBook(bookChan chan<- *exchange.Book, doneChan <-chan bool) error {
+func (bf *Bitfinex) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
 	// Run read loop in new goroutine
 	go bf.runLoop(bookChan, doneChan)
 
@@ -75,7 +75,7 @@ func (bf *Bitfinex) CommunicateBook(bookChan chan<- *exchange.Book, doneChan <-c
 }
 
 // HTTP read loop
-func (bf *Bitfinex) runLoop(bookChan chan<- *exchange.Book, doneChan <-chan bool) {
+func (bf *Bitfinex) runLoop(bookChan chan<- exchange.Book, doneChan <-chan bool) {
 	for {
 		select {
 		case <-doneChan:
@@ -88,12 +88,12 @@ func (bf *Bitfinex) runLoop(bookChan chan<- *exchange.Book, doneChan <-chan bool
 }
 
 // Get book data with an http request
-func (bf *Bitfinex) getBook() *exchange.Book {
+func (bf *Bitfinex) getBook() exchange.Book {
 	// Get date
 	url := fmt.Sprintf("%sbook/%s%s?limit_bids=%d&limit_asks=%d", URL, bf.symbol, bf.currency, 20, 20)
 	data, err := get(url)
 	if err != nil {
-		return &exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}
+		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}
 	}
 
 	// Unmarshal into exchange book structure
@@ -108,7 +108,7 @@ func (bf *Bitfinex) getBook() *exchange.Book {
 		} `json:"asks"`
 	}
 	if err := json.Unmarshal(data, &tmp); err != nil {
-		return &exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}
+		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}
 	}
 
 	// Convert into exchange.Book structure
@@ -124,7 +124,7 @@ func (bf *Bitfinex) getBook() *exchange.Book {
 	sort.Sort(asks)
 
 	// Return book
-	return &exchange.Book{
+	return exchange.Book{
 		Exg:   bf,
 		Time:  time.Now(),
 		Bids:  bids,

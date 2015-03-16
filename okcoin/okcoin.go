@@ -77,7 +77,7 @@ func (ok *OKCoin) Position() float64 {
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel
-func (ok *OKCoin) CommunicateBook(bookChan chan<- *exchange.Book, doneChan <-chan bool) error {
+func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
 	// Connect to websocket
 	ws, _, err := websocket.DefaultDialer.Dial(websocketURL, http.Header{})
 	if err != nil {
@@ -98,7 +98,7 @@ func (ok *OKCoin) CommunicateBook(bookChan chan<- *exchange.Book, doneChan <-cha
 }
 
 // Websocket read loop
-func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan<- *exchange.Book, doneChan <-chan bool) {
+func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan<- exchange.Book, doneChan <-chan bool) {
 	// Syncronize access to *websocket.Conn
 	useWS := make(chan bool)
 	getWS := make(chan *websocket.Conn)
@@ -192,7 +192,7 @@ func reconnect(initMessage request) *websocket.Conn {
 }
 
 // Convert websocket data to an exchange.Book
-func (ok *OKCoin) convertToBook(data []byte) *exchange.Book {
+func (ok *OKCoin) convertToBook(data []byte) exchange.Book {
 	// Unmarshal
 	var resp []struct {
 		Channel   string `json:"channel"`          // Channel name
@@ -206,12 +206,12 @@ func (ok *OKCoin) convertToBook(data []byte) *exchange.Book {
 		} `json:"data"` // Data specific to channel
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return &exchange.Book{Error: fmt.Errorf("OKCoin book error: %s\n", err)}
+		return exchange.Book{Error: fmt.Errorf("OKCoin book error: %s\n", err)}
 	}
 
 	// Return error if there is an exchange error code
 	if resp[0].ErrorCode != 0 {
-		return &exchange.Book{Error: fmt.Errorf("OKCoin book error code: %d\n", resp[0].ErrorCode)}
+		return exchange.Book{Error: fmt.Errorf("OKCoin book error code: %d\n", resp[0].ErrorCode)}
 	}
 
 	// Translate into exchange.Book structure
@@ -227,7 +227,7 @@ func (ok *OKCoin) convertToBook(data []byte) *exchange.Book {
 	sort.Sort(asks)
 
 	// Return book
-	return &exchange.Book{
+	return exchange.Book{
 		Exg:   ok,
 		Time:  time.Now(),
 		Bids:  bids,

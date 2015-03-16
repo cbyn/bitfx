@@ -21,7 +21,7 @@ func main() {
 	log.Println("Starting new run")
 
 	doneChan := make(chan bool, 1)
-	bookChan := make(chan *exchange.Book)
+	bookChan := make(chan exchange.Book)
 	if err := ok.CommunicateBook(bookChan, doneChan); err != nil {
 		log.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func checkStdin(inputChan chan<- rune) {
 }
 
 // Print book data from each exchange
-func printBook(book *exchange.Book) {
+func printBook(book exchange.Book) {
 	clearScreen()
 	if book.Error != nil {
 		log.Println(book.Error)

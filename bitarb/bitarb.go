@@ -153,7 +153,7 @@ func handleData(marketChan chan<- map[exchange.Exchange]filteredBook, doneChan <
 	// Current relevant market data for each exchange
 	markets := make(map[exchange.Exchange]filteredBook)
 	// Channel to receive book data from exchanges
-	bookChan := make(chan *exchange.Book)
+	bookChan := make(chan exchange.Book)
 	// Channel to notify exchanges when finished
 	exgDoneChan := make(chan bool, len(exchanges))
 
@@ -189,8 +189,7 @@ func handleData(marketChan chan<- map[exchange.Exchange]filteredBook, doneChan <
 
 // Filter book data down to tradable market
 // Adjusts market amounts according to MaxOrder
-func filterBook(bookRef *exchange.Book) filteredBook {
-	book := *bookRef
+func filterBook(book exchange.Book) filteredBook {
 	var fb filteredBook
 
 	// Loop through bids and aggregate amounts until required size
