@@ -1,5 +1,13 @@
 // Cryptocurrency arbitrage trading system
 
+// TODO:
+// - Setup okcoin.cn
+// - Use arb logic for best bid and ask
+// - Prevent against false repeated opportunities
+// - Check that data is recent (may help above issue)
+// - Use websocket for orders
+// - Setup auto margining on okcoin
+
 package main
 
 import (
@@ -22,7 +30,6 @@ import (
 type Config struct {
 	Sec struct {
 		Symbol      string  // Symbol to trade
-		Currency    string  // Underlying currency
 		MaxArb      float64 // Top limit for position entry
 		MinArb      float64 // Bottom limit for position exit
 		MaxPosition float64 // Max position size on any exchange
@@ -74,8 +81,8 @@ func setLog() {
 // Initialize exchanges
 func setExchanges() {
 	exchanges = []exchange.Exchange{
-		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, cfg.Sec.Currency, 2, 0.001),
-		okcoin.New(os.Getenv("OKCOIN_KEY"), os.Getenv("OKCOIN_SECRET"), cfg.Sec.Symbol, cfg.Sec.Currency, 1, 0.002),
+		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 2, 0.001),
+		okcoin.New(os.Getenv("OKCOIN_KEY"), os.Getenv("OKCOIN_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.002),
 	}
 	for _, exg := range exchanges {
 		log.Printf("Using exchange %s with priority %d and fee of %.4f", exg, exg.Priority(), exg.Fee())
@@ -226,8 +233,6 @@ func filterBook(book exchange.Book) filteredBook {
 
 	return fb
 }
-
-// TODO: Check that data is not old?
 
 // Trade if net position exists or arb exists
 func considerTrade(requestData chan<- exchange.Exchange, receiveData <-chan filteredBook, newData <-chan bool) {
@@ -459,7 +464,7 @@ func printResults() {
 	fmt.Println("   Positions:")
 	fmt.Println("----------------")
 	for _, exg := range exchanges {
-		fmt.Printf("%-8s %7.4f\n", exg, exg.Position())
+		fmt.Printf("%-8s %7.2f\n", exg, exg.Position())
 	}
 	fmt.Println("----------------")
 	fmt.Printf("\nRun P&L: $%.2f\n", pl)

@@ -19,17 +19,11 @@ import (
 	"time"
 )
 
-const (
-	websocketURL = "wss://real.okcoin.com:10440/websocket/okcoinapi"
-	restURL      = "https://www.okcoin.com/api/v1/"
-	origin       = "http://localhost/"
-)
-
 // OKCoin exchange information
 type OKCoin struct {
-	key, secret, symbol, currency string
-	priority                      int
-	position, fee                 float64
+	key, secret, symbol, currency, websocketURL, restURL string
+	priority                                             int
+	position, fee                                        float64
 }
 
 // Exchange request format
@@ -41,13 +35,27 @@ type request struct {
 
 // New returns a pointer to a new OKCoin instance
 func New(key, secret, symbol, currency string, priority int, fee float64) *OKCoin {
+	// URL depends on currency
+	var websocketURL, restURL string
+	if strings.ToLower(currency) == "usd" {
+		websocketURL = "wss://real.okcoin.com:10440/websocket/okcoinapi"
+		restURL = "https://www.okcoin.com/api/v1/"
+	} else if strings.ToLower(currency) == "cny" {
+		websocketURL = "wss://real.okcoin.cn:10440/websocket/okcoinapi"
+		restURL = "https://www.okcoin.cn/api/v1/"
+	} else {
+		log.Fatal("Currency must be USD or CNY")
+	}
+
 	return &OKCoin{
-		key:      key,
-		secret:   secret,
-		symbol:   symbol,
-		currency: currency,
-		priority: priority,
-		fee:      fee,
+		key:          key,
+		secret:       secret,
+		symbol:       symbol,
+		currency:     currency,
+		websocketURL: websocketURL,
+		restURL:      restURL,
+		priority:     priority,
+		fee:          fee,
 	}
 }
 
@@ -76,10 +84,15 @@ func (ok *OKCoin) Position() float64 {
 	return ok.position
 }
 
+// Currency getter method
+func (ok *OKCoin) Currency() string {
+	return ok.currency
+}
+
 // CommunicateBook sends the latest available book data on the supplied channel
 func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
 	// Connect to websocket
-	ws, _, err := websocket.DefaultDialer.Dial(websocketURL, http.Header{})
+	ws, _, err := websocket.DefaultDialer.Dial(ok.websocketURL, http.Header{})
 	if err != nil {
 		return fmt.Errorf("OKCoin CommunicateBook error: %s\n", err)
 	}
@@ -112,7 +125,7 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan
 				receiveWS <- ws
 			case <-reconnectWS:
 				ws.Close()
-				ws = reconnect(initMessage)
+				ws = ok.reconnect(initMessage)
 			case <-closeWS:
 				ws.Close()
 				break LOOP
@@ -168,11 +181,11 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan
 }
 
 // Reconnect websocket
-func reconnect(initMessage request) *websocket.Conn {
+func (ok *OKCoin) reconnect(initMessage request) *websocket.Conn {
 	log.Println("Reconnecting...")
 
 	// Try reconnecting
-	ws, _, err := websocket.DefaultDialer.Dial(websocketURL, http.Header{})
+	ws, _, err := websocket.DefaultDialer.Dial(ok.websocketURL, http.Header{})
 	if err == nil {
 		err = ws.WriteJSON(initMessage)
 	}
@@ -180,7 +193,7 @@ func reconnect(initMessage request) *websocket.Conn {
 	for err != nil {
 		log.Printf("OKCoin WebSocket error %s\n", err)
 		time.Sleep(5 * time.Second)
-		ws, _, err = websocket.DefaultDialer.Dial(websocketURL, http.Header{})
+		ws, _, err = websocket.DefaultDialer.Dial(ok.websocketURL, http.Header{})
 		if err == nil {
 			err = ws.WriteJSON(initMessage)
 		}
@@ -250,7 +263,7 @@ func (ok *OKCoin) SendOrder(action, otype string, amount, price float64) (int64,
 	params["amount"] = fmt.Sprintf("%f", amount)
 
 	// Send post request
-	data, err := ok.post(restURL+"trade.do", params)
+	data, err := ok.post(ok.restURL+"trade.do", params)
 	if err != nil {
 		return 0, fmt.Errorf("OKCoin SendOrder error: %s\n", err)
 	}
@@ -278,7 +291,7 @@ func (ok *OKCoin) CancelOrder(id int64) (bool, error) {
 	params["order_id"] = fmt.Sprintf("%d", id)
 
 	// Send post request
-	data, err := ok.post(restURL+"cancel_order.do", params)
+	data, err := ok.post(ok.restURL+"cancel_order.do", params)
 	if err != nil {
 		return false, fmt.Errorf("OKCoin CancelOrder error: %s\n", err)
 	}
@@ -309,7 +322,7 @@ func (ok *OKCoin) GetOrderStatus(id int64) (exchange.Order, error) {
 	var order exchange.Order
 
 	// Send post request
-	data, err := ok.post(restURL+"order_info.do", params)
+	data, err := ok.post(ok.restURL+"order_info.do", params)
 	if err != nil {
 		return order, fmt.Errorf("OKCoin GetOrderStatus error: %s\n", err)
 	}

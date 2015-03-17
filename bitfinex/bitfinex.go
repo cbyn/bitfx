@@ -66,6 +66,11 @@ func (bf *Bitfinex) Position() float64 {
 	return bf.position
 }
 
+// Currency getter method
+func (bf *Bitfinex) Currency() string {
+	return bf.currency
+}
+
 // CommunicateBook sends the latest available book data on the supplied channel
 func (bf *Bitfinex) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
 	// Run read loop in new goroutine
