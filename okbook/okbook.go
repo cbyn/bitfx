@@ -2,6 +2,7 @@ package main
 
 import (
 	"bitfx2/exchange"
+	"bitfx2/forex"
 	"bitfx2/okcoin"
 	"fmt"
 	"log"
@@ -9,7 +10,10 @@ import (
 	"os/exec"
 )
 
-var ok = okcoin.New(os.Getenv("OKCOIN_KEY"), os.Getenv("OKCOIN_SECRET"), "ltc", "usd", 1, 0.002)
+var (
+	ok  = okcoin.New("", "", "ltc", "cny", 1, 0.002)
+	cny float64
+)
 
 func main() {
 	filename := "okbook.log"
@@ -19,6 +23,11 @@ func main() {
 	}
 	log.SetOutput(logFile)
 	log.Println("Starting new run")
+	quote, err := forex.GetQuote("CNY=X")
+	if err != nil || quote.Price == 0 {
+		log.Fatal("Failed to retreive data")
+	}
+	cny = quote.Price
 
 	doneChan := make(chan bool, 1)
 	bookChan := make(chan exchange.Book)
@@ -59,10 +68,10 @@ func printBook(book exchange.Book) {
 		fmt.Println("----------------------------")
 		for i := range book.Asks {
 			item := book.Asks[len(book.Asks)-1-i]
-			fmt.Printf("%-10s%-10.4f%8.2f\n", "", item.Price, item.Amount)
+			fmt.Printf("%-10s%-10.4f%8.2f\n", "", item.Price/cny, item.Amount)
 		}
 		for _, item := range book.Bids {
-			fmt.Printf("%-10.4f%-10.2s%8.2f\n", item.Price, "", item.Amount)
+			fmt.Printf("%-10.4f%-10.2s%8.2f\n", item.Price/cny, "", item.Amount)
 		}
 		fmt.Println("----------------------------")
 	}
