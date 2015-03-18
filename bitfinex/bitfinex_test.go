@@ -3,13 +3,14 @@ package bitfinex
 import (
 	// "github.com/davecgh/go-spew/spew"
 	"bitfx2/exchange"
+	"math"
 	"os"
 	"testing"
 	"time"
 )
 
 var book exchange.Book
-var bf = New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), "ltc", "usd", 2, 0.001)
+var bf = New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), "ltc", "usd", 2, 0.001, .1)
 
 func TestPriority(t *testing.T) {
 	if bf.Priority() != 2 {
@@ -37,6 +38,12 @@ func TestUpdatePositon(t *testing.T) {
 func TestCurrencyCode(t *testing.T) {
 	if bf.CurrencyCode() != 0 {
 		t.Fatal("Currency code should be 0")
+	}
+}
+
+func TestMaxPos(t *testing.T) {
+	if math.Abs(bf.MaxPos()-.1) > .000001 {
+		t.Fatal("MaxPos should be .1")
 	}
 }
 

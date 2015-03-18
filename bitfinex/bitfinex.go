@@ -26,12 +26,12 @@ const URL = "https://api.bitfinex.com/v1/"
 type Bitfinex struct {
 	key, secret, symbol, currency string
 	priority                      int
-	position, fee                 float64
+	position, fee, maxPos         float64
 	currencyCode                  byte
 }
 
 // New returns a pointer to a new Bitfinex instance
-func New(key, secret, symbol, currency string, priority int, fee float64) *Bitfinex {
+func New(key, secret, symbol, currency string, priority int, fee, maxPos float64) *Bitfinex {
 	return &Bitfinex{
 		key:          key,
 		secret:       secret,
@@ -39,6 +39,7 @@ func New(key, secret, symbol, currency string, priority int, fee float64) *Bitfi
 		currency:     currency,
 		priority:     priority,
 		fee:          fee,
+		maxPos:       maxPos,
 		currencyCode: 0,
 	}
 }
@@ -71,6 +72,11 @@ func (bf *Bitfinex) Position() float64 {
 // CurrencyCode getter method
 func (bf *Bitfinex) CurrencyCode() byte {
 	return bf.currencyCode
+}
+
+// MaxPos getter method
+func (bf *Bitfinex) MaxPos() float64 {
+	return bf.maxPos
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel

@@ -23,7 +23,7 @@ import (
 type OKCoin struct {
 	key, secret, symbol, currency, websocketURL, restURL string
 	priority                                             int
-	position, fee                                        float64
+	position, fee, maxPos                                float64
 	currencyCode                                         byte
 }
 
@@ -35,7 +35,7 @@ type request struct {
 }
 
 // New returns a pointer to a new OKCoin instance
-func New(key, secret, symbol, currency string, priority int, fee float64) *OKCoin {
+func New(key, secret, symbol, currency string, priority int, fee, maxPos float64) *OKCoin {
 	// URL depends on currency
 	var websocketURL, restURL string
 	var currencyCode byte
@@ -60,6 +60,7 @@ func New(key, secret, symbol, currency string, priority int, fee float64) *OKCoi
 		restURL:      restURL,
 		priority:     priority,
 		fee:          fee,
+		maxPos:       maxPos,
 		currencyCode: currencyCode,
 	}
 }
@@ -92,6 +93,11 @@ func (ok *OKCoin) Position() float64 {
 // CurrencyCode getter method
 func (ok *OKCoin) CurrencyCode() byte {
 	return ok.currencyCode
+}
+
+// MaxPos getter method
+func (ok *OKCoin) MaxPos() float64 {
+	return ok.maxPos
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel

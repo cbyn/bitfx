@@ -3,13 +3,14 @@ package okcoin
 import (
 	// "github.com/davecgh/go-spew/spew"
 	"bitfx2/exchange"
+	"math"
 	"os"
 	"testing"
 	"time"
 )
 
 var book exchange.Book
-var ok = New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), "ltc", "usd", 1, 0.002)
+var ok = New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), "ltc", "usd", 1, 0.002, .1)
 
 func TestPriority(t *testing.T) {
 	if ok.Priority() != 1 {
@@ -31,6 +32,12 @@ func TestUpdatePositon(t *testing.T) {
 	t.Logf("Set position to 10")
 	if ok.Position() != 10 {
 		t.Fatal("Position should have updated to 10")
+	}
+}
+
+func TestMaxPos(t *testing.T) {
+	if math.Abs(ok.MaxPos()-.1) > .000001 {
+		t.Fatal("MaxPos should be .1")
 	}
 }
 
@@ -143,7 +150,7 @@ func TestNewOrderUSD(t *testing.T) {
 func TestCurrencyCodeCNY(t *testing.T) {
 	// Reset global variables
 	book = exchange.Book{}
-	ok = New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), "ltc", "cny", 1, 0.002)
+	ok = New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), "ltc", "cny", 1, 0.002, .1)
 
 	if ok.CurrencyCode() != 1 {
 		t.Fatal("Currency code should be 1")
