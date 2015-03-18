@@ -27,17 +27,19 @@ type Bitfinex struct {
 	key, secret, symbol, currency string
 	priority                      int
 	position, fee                 float64
+	currencyCode                  byte
 }
 
 // New returns a pointer to a new Bitfinex instance
 func New(key, secret, symbol, currency string, priority int, fee float64) *Bitfinex {
 	return &Bitfinex{
-		key:      key,
-		secret:   secret,
-		symbol:   symbol,
-		currency: currency,
-		priority: priority,
-		fee:      fee,
+		key:          key,
+		secret:       secret,
+		symbol:       symbol,
+		currency:     currency,
+		priority:     priority,
+		fee:          fee,
+		currencyCode: 0,
 	}
 }
 
@@ -66,9 +68,9 @@ func (bf *Bitfinex) Position() float64 {
 	return bf.position
 }
 
-// Currency getter method
-func (bf *Bitfinex) Currency() string {
-	return bf.currency
+// CurrencyCode getter method
+func (bf *Bitfinex) CurrencyCode() byte {
+	return bf.currencyCode
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel

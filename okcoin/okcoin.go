@@ -24,6 +24,7 @@ type OKCoin struct {
 	key, secret, symbol, currency, websocketURL, restURL string
 	priority                                             int
 	position, fee                                        float64
+	currencyCode                                         byte
 }
 
 // Exchange request format
@@ -37,12 +38,15 @@ type request struct {
 func New(key, secret, symbol, currency string, priority int, fee float64) *OKCoin {
 	// URL depends on currency
 	var websocketURL, restURL string
+	var currencyCode byte
 	if strings.ToLower(currency) == "usd" {
 		websocketURL = "wss://real.okcoin.com:10440/websocket/okcoinapi"
 		restURL = "https://www.okcoin.com/api/v1/"
+		currencyCode = 0
 	} else if strings.ToLower(currency) == "cny" {
 		websocketURL = "wss://real.okcoin.cn:10440/websocket/okcoinapi"
 		restURL = "https://www.okcoin.cn/api/v1/"
+		currencyCode = 1
 	} else {
 		log.Fatal("Currency must be USD or CNY")
 	}
@@ -56,6 +60,7 @@ func New(key, secret, symbol, currency string, priority int, fee float64) *OKCoi
 		restURL:      restURL,
 		priority:     priority,
 		fee:          fee,
+		currencyCode: currencyCode,
 	}
 }
 
@@ -84,9 +89,9 @@ func (ok *OKCoin) Position() float64 {
 	return ok.position
 }
 
-// Currency getter method
-func (ok *OKCoin) Currency() string {
-	return ok.currency
+// CurrencyCode getter method
+func (ok *OKCoin) CurrencyCode() byte {
+	return ok.currencyCode
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel
@@ -190,7 +195,7 @@ func (ok *OKCoin) reconnect(initMessage request) *websocket.Conn {
 	// Keep trying on error
 	for err != nil {
 		log.Printf("OKCoin WebSocket error %s\n", err)
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 		ws, _, err = websocket.DefaultDialer.Dial(ok.websocketURL, http.Header{})
 		if err == nil {
 			err = ws.WriteJSON(initMessage)
