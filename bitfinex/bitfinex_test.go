@@ -34,6 +34,12 @@ func TestUpdatePositon(t *testing.T) {
 	}
 }
 
+func TestCurrencyCode(t *testing.T) {
+	if bf.CurrencyCode() != 0 {
+		t.Fatal("Currency code should be 0")
+	}
+}
+
 func TestCommunicateBook(t *testing.T) {
 	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
