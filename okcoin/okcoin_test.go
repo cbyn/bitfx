@@ -36,6 +36,12 @@ func TestUpdatePositon(t *testing.T) {
 
 // USD tesing ******************************************************************
 
+func TestCurrencyCodeUSD(t *testing.T) {
+	if ok.CurrencyCode() != 0 {
+		t.Fatal("Currency code should be 0")
+	}
+}
+
 func TestCommunicateBookUSD(t *testing.T) {
 	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
@@ -134,11 +140,17 @@ func TestNewOrderUSD(t *testing.T) {
 
 // CNY tesing ******************************************************************
 
-func TestCommunicateBookCNY(t *testing.T) {
+func TestCurrencyCodeCNY(t *testing.T) {
 	// Reset global variables
 	book = exchange.Book{}
 	ok = New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), "ltc", "cny", 1, 0.002)
 
+	if ok.CurrencyCode() != 1 {
+		t.Fatal("Currency code should be 1")
+	}
+}
+
+func TestCommunicateBookCNY(t *testing.T) {
 	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
 	err := ok.CommunicateBook(bookChan, doneChan)
