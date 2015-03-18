@@ -1,12 +1,12 @@
 // Cryptocurrency arbitrage trading system
 
 // TODO:
-// - Setup okcoin.cn
-// - Use arb logic for best bid and ask
-// - Prevent against false repeated opportunities
-// - Check that data is recent (may help above issue)
+// - Add OkCNY
+// - Use arb logic for best bid and ask?
+// - Prevent false repeated opportunities?
+// - Check data is recent?
 // - Use websocket for orders
-// - Setup auto margining on okcoin
+// - Auto margining on okcoin
 
 package main
 
@@ -29,14 +29,16 @@ import (
 // Config stores user configuration
 type Config struct {
 	Sec struct {
-		Symbol      string  // Symbol to trade
-		MaxArb      float64 // Top limit for position entry
-		MinArb      float64 // Bottom limit for position exit
-		MaxPosition float64 // Max position size on any exchange
-		MinNetPos   float64 // Min acceptable net position
-		MinOrder    float64 // Min order size for arb trade
-		MaxOrder    float64 // Max order size for arb trade
-		PrintOn     bool    // Display results in terminal
+		Symbol         string  // Symbol to trade
+		MaxArb         float64 // Top limit for position entry
+		MinArb         float64 // Bottom limit for position exit
+		MaxPosBitfinex float64 // Max position size
+		MaxPosOkUSD    float64 // Max position size
+		MaxPosOkCNY    float64 // Max position size
+		MinNetPos      float64 // Min acceptable net position
+		MinOrder       float64 // Min order size for arb trade
+		MaxOrder       float64 // Max order size for arb trade
+		PrintOn        bool    // Display results in terminal
 	}
 }
 
@@ -81,8 +83,8 @@ func setLog() {
 // Initialize exchanges
 func setExchanges() {
 	exchanges = []exchange.Exchange{
-		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 2, 0.001),
-		okcoin.New(os.Getenv("OKCOIN_KEY"), os.Getenv("OKCOIN_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.002),
+		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 2, 0.001, cfg.Sec.MaxPosBitfinex),
+		okcoin.New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.002, cfg.Sec.MaxPosOkUSD),
 	}
 	for _, exg := range exchanges {
 		log.Printf("Using exchange %s with priority %d and fee of %.4f", exg, exg.Priority(), exg.Fee())
@@ -294,7 +296,7 @@ func findBestBid(markets map[exchange.Exchange]filteredBook) market {
 	var bestBid market
 
 	for exg, fb := range markets {
-		ableToSell := exg.Position() + cfg.Sec.MaxPosition
+		ableToSell := exg.Position() + exg.MaxPos()
 		// If not already max short
 		if ableToSell >= cfg.Sec.MinOrder {
 			// If highest bid
@@ -316,7 +318,7 @@ func findBestAsk(markets map[exchange.Exchange]filteredBook) market {
 	bestAsk.adjPrice = math.MaxFloat64
 
 	for exg, fb := range markets {
-		ableToBuy := cfg.Sec.MaxPosition - exg.Position()
+		ableToBuy := exg.MaxPos() - exg.Position()
 		// If not already max long
 		if ableToBuy >= cfg.Sec.MinOrder {
 			// If lowest ask
@@ -340,14 +342,14 @@ func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bo
 
 	// Compare each bid to all other asks
 	for exg1, fb1 := range markets {
-		ableToSell := exg1.Position() + cfg.Sec.MaxPosition
+		ableToSell := exg1.Position() + exg1.MaxPos()
 		// If exg1 is not already max short
 		if ableToSell >= cfg.Sec.MinOrder {
 			for exg2, fb2 := range markets {
-				ableToBuy := cfg.Sec.MaxPosition - exg2.Position()
+				ableToBuy := exg2.MaxPos() - exg2.Position()
 				// If exg2 is not already max long
 				if ableToBuy >= cfg.Sec.MinOrder {
-					opp := fb1.bid.adjPrice - fb2.ask.adjPrice - calcNeededArb(exg2.Position(), exg1.Position())
+					opp := fb1.bid.adjPrice - fb2.ask.adjPrice - calcNeededArb(exg2.Position(), exg1.Position(), exg2.MaxPos(), exg1.MaxPos())
 					if opp >= bestOpp {
 						bestBid = fb1.bid
 						bestBid.amount = math.Min(bestBid.amount, ableToSell)
@@ -365,14 +367,14 @@ func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bo
 }
 
 // Calculate arb needed for a trade based on existing positions
-func calcNeededArb(buyExgPos, sellExgPos float64) float64 {
+func calcNeededArb(buyExgPos, sellExgPos, buyExgMax, sellExgMax float64) float64 {
 	// Middle between user-defined min and max
 	center := (cfg.Sec.MaxArb + cfg.Sec.MinArb) / 2
 	// Half distance from center to min and max
 	halfDist := (cfg.Sec.MaxArb - center) / 2
 	// Percent of max allowed position for each
-	buyExgPct := buyExgPos / cfg.Sec.MaxPosition
-	sellExgPct := sellExgPos / cfg.Sec.MaxPosition
+	buyExgPct := buyExgPos / buyExgMax
+	sellExgPct := sellExgPos / sellExgMax
 
 	return center + buyExgPct*halfDist - sellExgPct*halfDist
 }

@@ -1,10 +1,11 @@
 [sec]
-symbol      = "ltc" # Symbol to trade
-currency    = "usd" # Underlying currency
-maxArb      = .01 # Top limit for position entry
-minArb      = 0 # Bottom limit for position exit
-maxPosition = 1 # Max position size on any exchange
-minNetPos   = .1 # Min acceptable net position
-minOrder    = 1 # Min order size for arb trade
-maxOrder    = 1 # Max order size for arb trade
-printOn     = true # Display results in terminal
+symbol         = "ltc" # Symbol to trade
+maxArb         = .1 # Top limit for position entry
+minArb         = .1 # Bottom limit for position exit
+maxPosBitfinex = 1 # Max position size
+maxPosOkUSD    = 1 # Max position size
+maxPosOkCNY    = 1 # Max position size
+minNetPos      = .1 # Min acceptable net position
+minOrder       = 1 # Min order size for arb trade
+maxOrder       = 1 # Max order size for arb trade
+printOn        = true # Display results in terminal

@@ -11,7 +11,6 @@ import (
 func init() {
 	cfg.Sec.MaxArb = .02
 	cfg.Sec.MinArb = -.01
-	cfg.Sec.MaxPosition = 500
 	cfg.Sec.MinOrder = 25
 	cfg.Sec.MaxOrder = 50
 }
@@ -36,7 +35,7 @@ func TestCalculateNeededArb(t *testing.T) {
 	}
 
 	for _, neededArb := range neededArbTests {
-		arb := calcNeededArb(neededArb.buyExgPos, neededArb.sellExgPos)
+		arb := calcNeededArb(neededArb.buyExgPos, neededArb.sellExgPos, 500, 500)
 		if math.Abs(arb-neededArb.arb) > .000001 {
 			t.Errorf("For %.4f / %.4f expect %.4f, got %.4f\n", neededArb.buyExgPos, neededArb.sellExgPos, neededArb.arb, arb)
 		}
@@ -45,7 +44,7 @@ func TestCalculateNeededArb(t *testing.T) {
 
 func TestFilterBook(t *testing.T) {
 	testBook := exchange.Book{
-		Exg: okcoin.New("", "", "", "", 1, 0.002),
+		Exg: okcoin.New("", "", "", "usd", 1, 0.002, 500),
 		Bids: exchange.BidItems{
 			0: {Price: 1.90, Amount: 10},
 			1: {Price: 1.80, Amount: 10},
@@ -82,7 +81,7 @@ func TestFilterBook(t *testing.T) {
 	}
 
 	testBook = exchange.Book{
-		Exg: okcoin.New("", "", "", "", 2, 0.002),
+		Exg: okcoin.New("", "", "", "usd", 2, 0.002, 500),
 		Bids: exchange.BidItems{
 			0: {Price: 1.90, Amount: 30},
 			1: {Price: 1.80, Amount: 10},
@@ -121,9 +120,9 @@ func TestFilterBook(t *testing.T) {
 
 func TestFindBestBid(t *testing.T) {
 	markets := make(map[exchange.Exchange]filteredBook)
-	exg1 := okcoin.New("", "", "", "", 1, 0.002)
-	exg2 := okcoin.New("", "", "", "", 1, 0.002)
-	exg3 := okcoin.New("", "", "", "", 1, 0.002)
+	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
+	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
+	exg3 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
 	markets[exg1] = filteredBook{bid: market{adjPrice: 2.00, amount: 500}}
 	markets[exg2] = filteredBook{bid: market{adjPrice: 1.99}}
 	markets[exg3] = filteredBook{bid: market{adjPrice: 1.98}}
@@ -142,9 +141,9 @@ func TestFindBestBid(t *testing.T) {
 
 func TestFindBestAsk(t *testing.T) {
 	markets := make(map[exchange.Exchange]filteredBook)
-	exg1 := okcoin.New("", "", "", "", 1, 0.002)
-	exg2 := okcoin.New("", "", "", "", 1, 0.002)
-	exg3 := okcoin.New("", "", "", "", 1, 0.002)
+	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
+	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
+	exg3 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
 	markets[exg1] = filteredBook{ask: market{adjPrice: 1.98, amount: 500}}
 	markets[exg2] = filteredBook{ask: market{adjPrice: 1.99}}
 	markets[exg3] = filteredBook{ask: market{adjPrice: 2.00}}
@@ -164,9 +163,9 @@ func TestFindBestAsk(t *testing.T) {
 func TestFindBestArb(t *testing.T) {
 	// No opportunity
 	markets := make(map[exchange.Exchange]filteredBook)
-	exg1 := okcoin.New("", "", "", "", 1, 0.002)
-	exg2 := okcoin.New("", "", "", "", 1, 0.002)
-	exg3 := okcoin.New("", "", "", "", 1, 0.002)
+	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
+	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
+	exg3 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
 	markets[exg1] = filteredBook{
 		bid: market{adjPrice: 1.98, amount: 50, exg: exg1},
 		ask: market{adjPrice: 2.00, amount: 50, exg: exg1},
