@@ -44,6 +44,7 @@ type Config struct {
 // Used for filtered book data
 type filteredBook struct {
 	bid, ask market
+	time     time.Time
 }
 type market struct {
 	exg                          exchange.Exchange
@@ -205,7 +206,7 @@ func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filtere
 // Filter book data down to tradable market
 // Adjusts market amounts according to MaxOrder
 func filterBook(book exchange.Book) filteredBook {
-	var fb filteredBook
+	fb := filteredBook{time: book.Time}
 
 	// Loop through bids and aggregate amounts until required size
 	var amount, aggPrice float64
@@ -238,20 +239,24 @@ func filterBook(book exchange.Book) filteredBook {
 
 // Trade if net position exists or arb exists
 func considerTrade(requestBook chan<- exchange.Exchange, receiveBook <-chan filteredBook, newBook <-chan bool) {
-	// Map of data for each exchange
-	markets := make(map[exchange.Exchange]filteredBook)
 	// Wait for data initialization
 	time.Sleep(5 * time.Second)
 
-	// Store last arb opportunity to prevent false repeats on slow data updates
+	// For a local data copy
+	var markets map[exchange.Exchange]filteredBook
+	// For tracking last trade, to prevent false repeats on slow data updates
 	var lastArb, lastAmount float64
 
 	// Check for trade whenever new data is available
 	for range newBook {
 		// Build local snapshot of latest data
+		markets = make(map[exchange.Exchange]filteredBook)
 		for _, exg := range exchanges {
 			requestBook <- exg
-			markets[exg] = <-receiveBook
+			// Don't use old data
+			if fb := <-receiveBook; time.Since(fb.time) < 2*time.Minute {
+				markets[exg] = fb
+			}
 		}
 		// If net long, hit best bid
 		if netPosition >= cfg.Sec.MinNetPos {
@@ -473,12 +478,12 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 func printResults() {
 	clearScreen()
 
-	fmt.Println("   Positions:")
-	fmt.Println("----------------")
+	fmt.Println("        Positions:")
+	fmt.Println("--------------------------")
 	for _, exg := range exchanges {
-		fmt.Printf("%-8s %7.2f\n", exg, exg.Position())
+		fmt.Printf("%-12s  %12.2f\n", exg, exg.Position())
 	}
-	fmt.Println("----------------")
+	fmt.Println("--------------------------")
 	fmt.Printf("\nRun P&L: $%.2f\n", pl)
 }
 
