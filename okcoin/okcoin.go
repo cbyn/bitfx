@@ -21,10 +21,10 @@ import (
 
 // OKCoin exchange information
 type OKCoin struct {
-	key, secret, symbol, currency, websocketURL, restURL string
-	priority                                             int
-	position, fee, maxPos                                float64
-	currencyCode                                         byte
+	key, secret, symbol, currency, websocketURL, restURL, name string
+	priority                                                   int
+	position, fee, maxPos                                      float64
+	currencyCode                                               byte
 }
 
 // Exchange request format
@@ -62,12 +62,13 @@ func New(key, secret, symbol, currency string, priority int, fee, maxPos float64
 		fee:          fee,
 		maxPos:       maxPos,
 		currencyCode: currencyCode,
+		name:         fmt.Sprintf("OKCoin(%s)", currency),
 	}
 }
 
 // String implements the Stringer interface
 func (ok *OKCoin) String() string {
-	return "OKCoin"
+	return ok.name
 }
 
 // Priority returns the exchange priority for order execution

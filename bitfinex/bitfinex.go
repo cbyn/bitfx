@@ -24,10 +24,10 @@ const URL = "https://api.bitfinex.com/v1/"
 
 // Bitfinex exchange information
 type Bitfinex struct {
-	key, secret, symbol, currency string
-	priority                      int
-	position, fee, maxPos         float64
-	currencyCode                  byte
+	key, secret, symbol, currency, name string
+	priority                            int
+	position, fee, maxPos               float64
+	currencyCode                        byte
 }
 
 // New returns a pointer to a new Bitfinex instance
@@ -41,12 +41,13 @@ func New(key, secret, symbol, currency string, priority int, fee, maxPos float64
 		fee:          fee,
 		maxPos:       maxPos,
 		currencyCode: 0,
+		name:         fmt.Sprintf("Bitfinex(%s)", currency),
 	}
 }
 
 // String implements the Stringer interface
 func (bf *Bitfinex) String() string {
-	return "Bitfinex"
+	return bf.name
 }
 
 // Priority returns the exchange priority for order execution
