@@ -1,12 +1,11 @@
 // Cryptocurrency arbitrage trading system
 
 // TODO:
-// - Add OkCNY
-// - Use arb logic for best bid and ask?
-// - Prevent false repeated opportunities?
-// - Check data is recent?
-// - Use websocket for orders
-// - Auto margining on okcoin
+// Check data is recent
+// Add OkCNY
+// Use arb logic for best bid and ask?
+// Use websocket for orders
+// Auto margining on okcoin
 
 package main
 
@@ -121,6 +120,7 @@ func calcNetPosition() {
 	netPosition = 0
 	for _, exg := range exchanges {
 		netPosition += exg.Position()
+		log.Printf("%s Position: %.2f\n", exg, exg.Position())
 	}
 }
 
@@ -243,6 +243,9 @@ func considerTrade(requestBook chan<- exchange.Exchange, receiveBook <-chan filt
 	// Wait for data initialization
 	time.Sleep(5 * time.Second)
 
+	// Store last arb opportunity to prevent false repeats on slow data updates
+	var lastArb, lastAmount float64
+
 	// Check for trade whenever new data is available
 	for range newBook {
 		// Build local snapshot of latest data
@@ -250,40 +253,46 @@ func considerTrade(requestBook chan<- exchange.Exchange, receiveBook <-chan filt
 			requestBook <- exg
 			markets[exg] = <-receiveBook
 		}
+		// If net long, hit best bid
 		if netPosition >= cfg.Sec.MinNetPos {
-			// If net long, hit best bid
 			bestBid := findBestBid(markets)
 			amount := math.Min(netPosition, bestBid.amount)
 			fillChan := make(chan float64)
-			log.Println("***** Net long position exit *****")
+			log.Println("NET LONG POSITION EXIT")
 			go fillOrKill(bestBid.exg, "sell", amount, bestBid.orderPrice, fillChan)
 			updatePL(bestBid.adjPrice, <-fillChan, "sell")
 			calcNetPosition()
 			if cfg.Sec.PrintOn {
 				printResults()
 			}
+			// Else if net short, lift best ask
 		} else if netPosition <= -cfg.Sec.MinNetPos {
-			// If net short, lift best ask
 			bestAsk := findBestAsk(markets)
 			amount := math.Min(-netPosition, bestAsk.amount)
 			fillChan := make(chan float64)
-			log.Println("***** Net short position exit *****")
+			log.Println("NET SHORT POSITION EXIT")
 			go fillOrKill(bestAsk.exg, "buy", amount, bestAsk.orderPrice, fillChan)
 			updatePL(bestAsk.adjPrice, <-fillChan, "buy")
 			calcNetPosition()
 			if cfg.Sec.PrintOn {
 				printResults()
 			}
+			// Else check for arb opportunities
 		} else {
-			// Check for arb opportunities
 			if bestBid, bestAsk, exists := findBestArb(markets); exists {
+				arb := bestBid.adjPrice - bestAsk.adjPrice
 				amount := math.Min(bestBid.amount, bestAsk.amount)
-				log.Printf("***** Arb Opportunity: %.4f for %.4f on %s vs %s *****\n",
-					bestBid.adjPrice-bestAsk.adjPrice, amount, bestAsk.exg, bestBid.exg)
-				sendPair(bestBid, bestAsk, amount)
-				calcNetPosition()
-				if cfg.Sec.PrintOn {
-					printResults()
+
+				// If it is not a false repeat, then trade
+				if math.Abs(arb-lastArb) > .000001 || math.Abs(amount-lastAmount) > .000001 || math.Abs(amount-cfg.Sec.MaxOrder) < .000001 {
+					log.Printf("***** Arb Opportunity: %.4f for %.4f on %s vs %s *****\n", arb, amount, bestAsk.exg, bestBid.exg)
+					sendPair(bestBid, bestAsk, amount)
+					calcNetPosition()
+					if cfg.Sec.PrintOn {
+						printResults()
+					}
+					lastArb = arb
+					lastAmount = amount
 				}
 			}
 		}
@@ -350,6 +359,7 @@ func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bo
 				// If exg2 is not already max long
 				if ableToBuy >= cfg.Sec.MinOrder {
 					opp := fb1.bid.adjPrice - fb2.ask.adjPrice - calcNeededArb(exg2.Position(), exg1.Position(), exg2.MaxPos(), exg1.MaxPos())
+					// If best opportunity
 					if opp >= bestOpp {
 						bestBid = fb1.bid
 						bestBid.amount = math.Min(bestBid.amount, ableToSell)
@@ -383,14 +393,14 @@ func calcNeededArb(buyExgPos, sellExgPos, buyExgMax, sellExgMax float64) float64
 func sendPair(bestBid, bestAsk market, amount float64) {
 	fillChan1 := make(chan float64)
 	fillChan2 := make(chan float64)
+	// If exchanges have equal priority, send simultaneous orders
 	if bestBid.exg.Priority() == bestAsk.exg.Priority() {
-		// If exchanges have equal priority, send simultaneous orders
 		go fillOrKill(bestAsk.exg, "buy", amount, bestAsk.orderPrice, fillChan1)
 		go fillOrKill(bestBid.exg, "sell", amount, bestBid.orderPrice, fillChan2)
 		updatePL(bestAsk.adjPrice, <-fillChan1, "buy")
 		updatePL(bestBid.adjPrice, <-fillChan2, "sell")
+		// Else if bestBid exchange has priority, confirm fill before sending other side
 	} else if bestBid.exg.Priority() < bestAsk.exg.Priority() {
-		// If bestBid exchange has priority, confirm fill before sending other side
 		go fillOrKill(bestBid.exg, "sell", amount, bestBid.orderPrice, fillChan2)
 		amount = <-fillChan2
 		updatePL(bestBid.adjPrice, amount, "sell")
@@ -398,8 +408,8 @@ func sendPair(bestBid, bestAsk market, amount float64) {
 			go fillOrKill(bestAsk.exg, "buy", amount, bestAsk.orderPrice, fillChan1)
 			updatePL(bestAsk.adjPrice, <-fillChan1, "buy")
 		}
+		// Else reverse priority
 	} else {
-		// Reverse priority
 		go fillOrKill(bestAsk.exg, "buy", amount, bestAsk.orderPrice, fillChan1)
 		amount = <-fillChan1
 		updatePL(bestAsk.adjPrice, amount, "buy")
@@ -435,7 +445,6 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 	}
 	// Check status and cancel if necessary
 	for {
-		// Continues until order status is non-empty
 		order, err = exg.GetOrderStatus(id)
 		isError(err)
 		if order.Status == "live" {
@@ -444,6 +453,7 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 		} else if order.Status == "dead" {
 			break
 		}
+		// Continues while order status is non-empty
 	}
 	// Update position
 	if action == "buy" {
