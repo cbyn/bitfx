@@ -14,6 +14,7 @@ type Exchange interface {
 	SetPosition(float64)
 	Position() float64
 	MaxPos() float64
+	Currency() string
 	CurrencyCode() byte
 	CommunicateBook(bookChan chan<- Book, doneChan <-chan bool) error
 	SendOrder(action, otype string, amount, price float64) (int64, error)

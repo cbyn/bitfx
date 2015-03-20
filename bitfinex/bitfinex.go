@@ -70,6 +70,11 @@ func (bf *Bitfinex) Position() float64 {
 	return bf.position
 }
 
+// Currency getter method
+func (bf *Bitfinex) Currency() string {
+	return bf.currency
+}
+
 // CurrencyCode getter method
 func (bf *Bitfinex) CurrencyCode() byte {
 	return bf.currencyCode

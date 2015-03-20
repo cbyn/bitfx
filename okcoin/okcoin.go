@@ -91,6 +91,11 @@ func (ok *OKCoin) Position() float64 {
 	return ok.position
 }
 
+// Currency getter method
+func (ok *OKCoin) Currency() string {
+	return ok.currency
+}
+
 // CurrencyCode getter method
 func (ok *OKCoin) CurrencyCode() byte {
 	return ok.currencyCode
