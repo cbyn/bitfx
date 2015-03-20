@@ -10,6 +10,7 @@ import (
 	// "github.com/davecgh/go-spew/spew"
 	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 // Forex data API URL
@@ -17,51 +18,77 @@ const (
 	DATAURL = "http://finance.yahoo.com/webservice/v1/symbols/"
 )
 
-// rawQuote returned for requested symbol
-type rawQuote struct {
-	List rawList `json:"list"`
-}
-type rawList struct {
-	Resources []rawResources `json:"resources"`
-}
-type rawResources struct {
-	Resource rawResource `json:"resource"`
-}
-type rawResource struct {
-	Fields Quote `json:"fields"`
-}
-
-// Quote for requested symbol
+// Quote forex info
 type Quote struct {
-	Name      string  `json:"name"`          // Name of instrument
-	Price     float64 `json:"price,string"`  // Quote price
-	Symbol    string  `json:"symbol"`        // Symbol for instrument
-	Timestamp float64 `json:"ts,string"`     // Timestamp for quote
-	Type      string  `json:"type"`          // Type of instrument
-	UTC       string  `json:"utctime"`       // UTC time for quote
-	Volume    float64 `json:"volume,string"` // Volume for quote
+	Price  float64
+	Symbol string
+	Error  error
 }
 
-// GetQuote for requested instrument
-func GetQuote(symbol string) (Quote, error) {
-	var quote rawQuote
+// CommunicateFX sends the latest FX quote to the supplied channel
+func CommunicateFX(symbol string, fxChan chan<- Quote, doneChan <-chan bool) error {
+	// Check connection is ok to start
+	quote := getQuote(symbol)
+	if quote.Error != nil {
+		return quote.Error
+	}
+	if quote.Price == 0 {
+		return fmt.Errorf("Price is zero")
+	}
 
-	url := fmt.Sprintf("%s/quote?format=json", symbol)
+	// Run read loop in new goroutine
+	go runLoop(symbol, fxChan, doneChan)
+	return nil
+}
+
+// HTTP read loop
+func runLoop(symbol string, fxChan chan<- Quote, doneChan <-chan bool) {
+	ticker := time.NewTicker(15 * time.Second)
+
+	for {
+		select {
+		case <-doneChan:
+			close(fxChan)
+			return
+		case <-ticker.C:
+			fxChan <- getQuote(symbol)
+		}
+	}
+}
+
+// Returns quote for requested instrument
+func getQuote(symbol string) Quote {
+	tmp := struct {
+		List struct {
+			Resources []struct {
+				Resource struct {
+					Fields struct {
+						Price float64 `json:"price,string"`
+					} `json:"fields"`
+				} `json:"resource"`
+			} `json:"resources"`
+		} `json:"list"`
+	}{}
+
+	url := fmt.Sprintf("%s=x/quote?format=json", symbol)
 
 	data, err := get(url)
 	if err != nil {
-		return Quote{}, err
+		return Quote{Error: fmt.Errorf("Forex error %s", err)}
 	}
 
-	err = json.Unmarshal(data, &quote)
-	if err != nil {
-		return Quote{}, err
+	if err = json.Unmarshal(data, &tmp); err != nil {
+		return Quote{Error: fmt.Errorf("Forex error %s", err)}
 	}
 
-	return quote.List.Resources[0].Resource.Fields, nil
+	return Quote{
+		Price:  tmp.List.Resources[0].Resource.Fields.Price,
+		Symbol: symbol,
+		Error:  nil,
+	}
 }
 
-// get API unauthenticated GET
+// unauthenticated GET
 func get(url string) ([]byte, error) {
 	resp, err := http.Get(DATAURL + url)
 	if err != nil {
