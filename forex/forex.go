@@ -48,6 +48,7 @@ func runLoop(symbol string, fxChan chan<- Quote, doneChan <-chan bool) {
 	for {
 		select {
 		case <-doneChan:
+			ticker.Stop()
 			close(fxChan)
 			return
 		case <-ticker.C:
