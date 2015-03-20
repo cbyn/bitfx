@@ -50,8 +50,7 @@ func TestMaxPos(t *testing.T) {
 func TestCommunicateBook(t *testing.T) {
 	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
-	err := bf.CommunicateBook(bookChan, doneChan)
-	if err != nil {
+	if err := bf.CommunicateBook(bookChan, doneChan); err != nil {
 		t.Fatal(err)
 	}
 

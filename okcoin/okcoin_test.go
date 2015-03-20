@@ -52,8 +52,7 @@ func TestCurrencyCodeUSD(t *testing.T) {
 func TestCommunicateBookUSD(t *testing.T) {
 	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
-	err := ok.CommunicateBook(bookChan, doneChan)
-	if err != nil {
+	if err := ok.CommunicateBook(bookChan, doneChan); err != nil {
 		t.Fatal(err)
 	}
 
