@@ -17,7 +17,8 @@ func TestGetQuote(t *testing.T) {
 func TestCommunicateFX(t *testing.T) {
 	fxChan := make(chan Quote)
 	doneChan := make(chan bool)
-	if err := CommunicateFX("cny", fxChan, doneChan); err != nil {
+	_, err := CommunicateFX("cny", fxChan, doneChan)
+	if err != nil {
 		t.Fatal(err)
 	}
 
