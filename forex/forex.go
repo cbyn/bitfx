@@ -32,7 +32,7 @@ func CommunicateFX(symbol string, fxChan chan<- Quote, doneChan <-chan bool) (fl
 	if quote.Error != nil {
 		return 0, quote.Error
 	}
-	if quote.Price == 0 {
+	if quote.Price < .000001 {
 		return 0, fmt.Errorf("Price is zero")
 	}
 
@@ -82,8 +82,13 @@ func getQuote(symbol string) Quote {
 		return Quote{Error: fmt.Errorf("Forex error %s", err)}
 	}
 
+	price := tmp.List.Resources[0].Resource.Fields.Price
+	if price < .000001 {
+		return Quote{Error: fmt.Errorf("Forex zero price error")}
+	}
+
 	return Quote{
-		Price:  tmp.List.Resources[0].Resource.Fields.Price,
+		Price:  price,
 		Symbol: symbol,
 		Error:  nil,
 	}

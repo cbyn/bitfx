@@ -8,8 +8,8 @@ import (
 
 func TestGetQuote(t *testing.T) {
 	quote := getQuote("cny")
-	if quote.Error != nil || quote.Price == 0 {
-		t.Fatal("Failed to retreive data")
+	if quote.Error != nil {
+		t.Fatal(quote.Error)
 	}
 	// spew.Dump(quote)
 }
@@ -32,8 +32,8 @@ func TestCommunicateFX(t *testing.T) {
 	for quote := range fxChan {
 		t.Logf("Received quote")
 		// spew.Dump(quote)
-		if quote.Error != nil || quote.Price == 0 {
-			t.Fatal("Failed to retreive data")
+		if quote.Error != nil {
+			t.Fatal(quote.Error)
 		}
 	}
 
