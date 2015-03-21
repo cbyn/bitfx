@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bitfx2/bitfinex"
 	"bitfx2/exchange"
 	"bitfx2/okcoin"
 	// "github.com/davecgh/go-spew/spew"
@@ -11,6 +12,7 @@ import (
 func init() {
 	cfg.Sec.MaxArb = .02
 	cfg.Sec.MinArb = -.01
+	cfg.Sec.FXPremium = .01
 	cfg.Sec.MinOrder = 25
 	cfg.Sec.MaxOrder = 50
 }
@@ -20,6 +22,7 @@ type neededArb struct {
 }
 
 func TestCalculateNeededArb(t *testing.T) {
+	// Test without FX
 	neededArbTests := []neededArb{
 		{500, -500, .02},
 		{-500, 500, -.01},
@@ -33,13 +36,44 @@ func TestCalculateNeededArb(t *testing.T) {
 		{-200, 0, .002},
 		{-100, 100, .002},
 	}
+	buyExg := okcoin.New("", "", "", "usd", 1, 0.002, 500)
+	sellExg := bitfinex.New("", "", "", "usd", 2, 0.001, 500)
 
 	for _, neededArb := range neededArbTests {
-		arb := calcNeededArb(neededArb.buyExgPos, neededArb.sellExgPos, 500, 500)
+		buyExg.SetPosition(neededArb.buyExgPos)
+		sellExg.SetPosition(neededArb.sellExgPos)
+		arb := calcNeededArb(buyExg, sellExg)
 		if math.Abs(arb-neededArb.arb) > .000001 {
-			t.Errorf("For %.4f / %.4f expect %.4f, got %.4f\n", neededArb.buyExgPos, neededArb.sellExgPos, neededArb.arb, arb)
+			t.Errorf("For %.4f / %.4f expect %.4f, got %.4f\n", buyExg.Position(), sellExg.Position(), neededArb.arb, arb)
 		}
 	}
+
+	// Test with FX
+	neededArbTests = []neededArb{
+		{500, -500, .03},
+		{-500, 500, -.01},
+		{500, 500, .01},
+		{-100, -100, .01},
+		{0, 0, .01},
+		{-250, 250, 0},
+		{250, -250, .02},
+		{100, -100, .014},
+		{0, -200, .014},
+		{-200, 0, .006},
+		{-100, 100, .006},
+	}
+	buyExg = okcoin.New("", "", "", "cny", 1, 0.002, 500)
+	sellExg = bitfinex.New("", "", "", "usd", 2, 0.001, 500)
+
+	for _, neededArb := range neededArbTests {
+		buyExg.SetPosition(neededArb.buyExgPos)
+		sellExg.SetPosition(neededArb.sellExgPos)
+		arb := calcNeededArb(buyExg, sellExg)
+		if math.Abs(arb-neededArb.arb) > .000001 {
+			t.Errorf("For %.4f / %.4f expect %.4f, got %.4f\n", buyExg.Position(), sellExg.Position(), neededArb.arb, arb)
+		}
+	}
+
 }
 
 func TestFilterBook(t *testing.T) {
@@ -56,9 +90,7 @@ func TestFilterBook(t *testing.T) {
 			2: {Price: 2.30, Amount: 10},
 		},
 	}
-
-	market := filterBook(testBook)
-
+	market := filterBook(testBook, 1)
 	if math.Abs(market.bid.orderPrice-1.70) > .000001 {
 		t.Errorf("Wrong bid order price")
 	}
@@ -79,6 +111,29 @@ func TestFilterBook(t *testing.T) {
 	if math.Abs(market.ask.adjPrice-adjPrice) > .000001 {
 		t.Errorf("Wrong ask adjusted price")
 	}
+	// Same test but with FX adjustment
+	fxPrice := 2.0
+	market = filterBook(testBook, fxPrice)
+	if math.Abs(market.bid.orderPrice-1.70) > .000001 {
+		t.Errorf("Wrong bid order price")
+	}
+	if math.Abs(market.bid.amount-50) > .000001 {
+		t.Errorf("Wrong bid amount")
+	}
+	adjPrice = ((1.90*10 + 1.80*10 + 1.70*30) / 50) * (1 - .002) / fxPrice
+	if math.Abs(market.bid.adjPrice-adjPrice) > .000001 {
+		t.Errorf("Wrong bid adjusted price")
+	}
+	if math.Abs(market.ask.orderPrice-2.20) > .000001 {
+		t.Errorf("Wrong ask order price")
+	}
+	if math.Abs(market.ask.amount-30) > .000001 {
+		t.Errorf("Wrong ask amount")
+	}
+	adjPrice = ((2.10*10 + 2.20*20) / 30) * (1 + .002) / fxPrice
+	if math.Abs(market.ask.adjPrice-adjPrice) > .000001 {
+		t.Errorf("Wrong ask adjusted price")
+	}
 
 	testBook = exchange.Book{
 		Exg: okcoin.New("", "", "", "usd", 2, 0.002, 500),
@@ -93,9 +148,7 @@ func TestFilterBook(t *testing.T) {
 			2: {Price: 2.30, Amount: 10},
 		},
 	}
-
-	market = filterBook(testBook)
-
+	market = filterBook(testBook, 1)
 	if math.Abs(market.bid.orderPrice-1.90) > .000001 {
 		t.Errorf("Wrong bid order price")
 	}
@@ -113,6 +166,29 @@ func TestFilterBook(t *testing.T) {
 		t.Errorf("Wrong ask amount")
 	}
 	adjPrice = 2.10 * (1 + .002)
+	if math.Abs(market.ask.adjPrice-adjPrice) > .000001 {
+		t.Errorf("Wrong ask adjusted price")
+	}
+	// Same test as above, but wiht FX adjustment
+	fxPrice = 3.0
+	market = filterBook(testBook, fxPrice)
+	if math.Abs(market.bid.orderPrice-1.90) > .000001 {
+		t.Errorf("Wrong bid order price")
+	}
+	if math.Abs(market.bid.amount-30) > .000001 {
+		t.Errorf("Wrong bid amount")
+	}
+	adjPrice = 1.90 * (1 - .002) / fxPrice
+	if math.Abs(market.bid.adjPrice-adjPrice) > .000001 {
+		t.Errorf("Wrong bid adjusted price")
+	}
+	if math.Abs(market.ask.orderPrice-2.10) > .000001 {
+		t.Errorf("Wrong ask order price")
+	}
+	if math.Abs(market.ask.amount-50) > .000001 {
+		t.Errorf("Wrong ask amount")
+	}
+	adjPrice = 2.10 * (1 + .002) / fxPrice
 	if math.Abs(market.ask.adjPrice-adjPrice) > .000001 {
 		t.Errorf("Wrong ask adjusted price")
 	}
