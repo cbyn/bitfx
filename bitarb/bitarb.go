@@ -1,7 +1,9 @@
 // Cryptocurrency arbitrage trading system
 
 // TODO:
-// Add OkCNY
+// Don't have exchanges close bookChan (and change tests)
+// Initialize book data the same as FX data (and remove hacky sleep call)
+// Use yahoo and openexchange for FX
 // Use arb logic for best bid and ask?
 // Use websocket for orders
 // Auto margining on okcoin
@@ -11,8 +13,8 @@ package main
 import (
 	"bitfx2/bitfinex"
 	"bitfx2/exchange"
+	"bitfx2/forex"
 	"bitfx2/okcoin"
-	"code.google.com/p/gcfg"
 	"encoding/csv"
 	"flag"
 	"fmt"
@@ -22,6 +24,8 @@ import (
 	"os/exec"
 	"strconv"
 	"time"
+
+	"code.google.com/p/gcfg"
 )
 
 // Config stores user configuration
@@ -30,6 +34,7 @@ type Config struct {
 		Symbol         string  // Symbol to trade
 		MaxArb         float64 // Top limit for position entry
 		MinArb         float64 // Bottom limit for position exit
+		FXPremium      float64 // Ammount added to MaxArb for taking FX risk
 		MaxPosBitfinex float64 // Max position size
 		MaxPosOkUSD    float64 // Max position size
 		MaxPosOkCNY    float64 // Max position size
@@ -54,7 +59,8 @@ type market struct {
 var (
 	logFile     os.File             // Log printed to file
 	cfg         Config              // Configuration struct
-	exchanges   []exchange.Exchange // Slice of exchanges
+	exchanges   []exchange.Exchange // Slice of exchanges in use
+	currencies  []string            // Slice of forein currencies in use
 	netPosition float64             // Net position accross exchanges
 	pl          float64             // Net P&L for current run
 )
@@ -84,10 +90,12 @@ func setExchanges() {
 	exchanges = []exchange.Exchange{
 		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 2, 0.001, cfg.Sec.MaxPosBitfinex),
 		okcoin.New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.002, cfg.Sec.MaxPosOkUSD),
+		okcoin.New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), cfg.Sec.Symbol, "cny", 1, 0.000, cfg.Sec.MaxPosOkCNY),
 	}
 	for _, exg := range exchanges {
 		log.Printf("Using exchange %s with priority %d and fee of %.4f", exg, exg.Priority(), exg.Fee())
 	}
+	currencies = append(currencies, "cny")
 }
 
 // Set status from previous run if file exists
@@ -134,11 +142,11 @@ func main() {
 	setStatus()
 	calcNetPosition()
 
-	// Notify termination on user input
+	// Terminate on user input
 	doneChan := make(chan bool, 1)
 	go checkStdin(doneChan)
 
-	// Communicate market data
+	// Communicate data
 	requestBook := make(chan exchange.Exchange)
 	receiveBook := make(chan filteredBook)
 	newBook := make(chan bool)
@@ -153,16 +161,16 @@ func main() {
 	fmt.Println("~~~ Fini ~~~")
 }
 
-// Check for any user input
+// Check for user input
 func checkStdin(doneChan chan<- bool) {
 	var ch rune
 	fmt.Scanf("%c", &ch)
 	doneChan <- true
 }
 
-// Handle book data from exchanges
+// Handle all data communication
 func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filteredBook, newBook chan<- bool, doneChan <-chan bool) {
-	// Map of data for each exchange
+	// Filtered book data for each exchange
 	markets := make(map[exchange.Exchange]filteredBook)
 	// Channel to receive book data from exchanges
 	bookChan := make(chan exchange.Book)
@@ -176,12 +184,24 @@ func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filtere
 		}
 	}
 
+	// Communicate forex
+	requestFX := make(chan string)
+	receiveFX := make(chan float64)
+	fxDoneChan := make(chan bool, 1)
+	go handleFX(requestFX, receiveFX, fxDoneChan)
+
 	for {
 		select {
 		// Incoming data from an exchange
 		case book := <-bookChan:
 			if !isError(book.Error) {
-				markets[book.Exg] = filterBook(book)
+				fxPrice := 1.0
+				// If a currency other than USD
+				if book.Exg.CurrencyCode() != 0 {
+					requestFX <- book.Exg.Currency()
+					fxPrice = <-receiveFX
+				}
+				markets[book.Exg] = filterBook(book, fxPrice)
 				// Notify of new data if receiver is not busy
 				select {
 				case newBook <- true:
@@ -191,30 +211,62 @@ func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filtere
 		// New request for data
 		case exg := <-requestBook:
 			receiveBook <- markets[exg]
-		// User kill notification
+		// Termination
 		case <-doneChan:
+			close(newBook)
+			fxDoneChan <- true
 			for range exchanges {
 				exgDoneChan <- true
 			}
-			close(newBook)
 			return
 		}
 	}
 }
 
-// Filter book data down to tradable market
-// Adjusts market amounts according to MaxOrder
-func filterBook(book exchange.Book) filteredBook {
-	fb := filteredBook{time: book.Time}
+// Handle FX quotes
+func handleFX(requestFX <-chan string, receiveFX chan<- float64, doneChan <-chan bool) {
+	prices := make(map[string]float64)
+	fxChan := make(chan forex.Quote)
+	fxDoneChan := make(chan bool)
+	// Initiate communication and initialize prices map
+	for _, symbol := range currencies {
+		price, err := forex.CommunicateFX(symbol, fxChan, fxDoneChan)
+		if err != nil {
+			log.Fatal(err)
+		}
+		prices[symbol] = price
+	}
 
+	for {
+		select {
+		// Incoming forex quote
+		case quote := <-fxChan:
+			if !isError(quote.Error) {
+				prices[quote.Symbol] = quote.Price
+			}
+		// New request for price
+		case symbol := <-requestFX:
+			receiveFX <- prices[symbol]
+		// Termination
+		case <-doneChan:
+			fxDoneChan <- true
+			return
+		}
+	}
+}
+
+// Filter book down to relevant data for trading decisions
+// Adjusts market amounts according to MaxOrder
+func filterBook(book exchange.Book, fxPrice float64) filteredBook {
+	fb := filteredBook{time: book.Time}
 	// Loop through bids and aggregate amounts until required size
 	var amount, aggPrice float64
 	for _, bid := range book.Bids {
 		aggPrice += bid.Price * math.Min(cfg.Sec.MaxOrder-amount, bid.Amount)
 		amount += math.Min(cfg.Sec.MaxOrder-amount, bid.Amount)
 		if amount >= cfg.Sec.MinOrder {
-			// Amount-weighted average subject to MaxOrder, adjusted for fees
-			adjPrice := (aggPrice / amount) * (1 - book.Exg.Fee())
+			// Amount-weighted average subject to MaxOrder, adjusted for fees and currency
+			adjPrice := (aggPrice / amount) * (1 - book.Exg.Fee()) / fxPrice
 			fb.bid = market{book.Exg, bid.Price, amount, adjPrice}
 			break
 		}
@@ -226,8 +278,8 @@ func filterBook(book exchange.Book) filteredBook {
 		aggPrice += ask.Price * math.Min(cfg.Sec.MaxOrder-amount, ask.Amount)
 		amount += math.Min(cfg.Sec.MaxOrder-amount, ask.Amount)
 		if amount >= cfg.Sec.MinOrder {
-			// Amount-weighted average subject to MaxOrder, adjusted for fees
-			adjPrice := (aggPrice / amount) * (1 + book.Exg.Fee())
+			// Amount-weighted average subject to MaxOrder, adjusted for fees and currency
+			adjPrice := (aggPrice / amount) * (1 + book.Exg.Fee()) / fxPrice
 			fb.ask = market{book.Exg, ask.Price, amount, adjPrice}
 			break
 		}
@@ -236,14 +288,14 @@ func filterBook(book exchange.Book) filteredBook {
 	return fb
 }
 
-// Trade if net position exists or arb exists
+// Trade on net position exits and arb opportunities
 func considerTrade(requestBook chan<- exchange.Exchange, receiveBook <-chan filteredBook, newBook <-chan bool) {
 	// Wait for data initialization
 	time.Sleep(5 * time.Second)
 
-	// For a local data copy
+	// Local data copy
 	var markets map[exchange.Exchange]filteredBook
-	// For tracking last trade, to prevent false repeats on slow data updates
+	// For tracking last trade, to prevent false repeats on slow exchange updates
 	var lastArb, lastAmount float64
 
 	// Check for trade whenever new data is available
@@ -252,12 +304,12 @@ func considerTrade(requestBook chan<- exchange.Exchange, receiveBook <-chan filt
 		markets = make(map[exchange.Exchange]filteredBook)
 		for _, exg := range exchanges {
 			requestBook <- exg
-			// Don't use old data
-			if fb := <-receiveBook; time.Since(fb.time) < 2*time.Minute {
+			// Don't use potentially stale data
+			if fb := <-receiveBook; time.Since(fb.time) < time.Minute {
 				markets[exg] = fb
 			}
 		}
-		// If net long, hit best bid
+		// If net long from a previous missed leg, hit best bid
 		if netPosition >= cfg.Sec.MinNetPos {
 			bestBid := findBestBid(markets)
 			amount := math.Min(netPosition, bestBid.amount)
@@ -283,11 +335,12 @@ func considerTrade(requestBook chan<- exchange.Exchange, receiveBook <-chan filt
 			}
 			// Else check for arb opportunities
 		} else {
+			// If an opportunity exists
 			if bestBid, bestAsk, exists := findBestArb(markets); exists {
 				arb := bestBid.adjPrice - bestAsk.adjPrice
 				amount := math.Min(bestBid.amount, bestAsk.amount)
 
-				// If it is not a false repeat, then trade
+				// If it's not a false repeat, then trade
 				if math.Abs(arb-lastArb) > .000001 || math.Abs(amount-lastAmount) > .000001 || math.Abs(amount-cfg.Sec.MaxOrder) < .000001 {
 					log.Printf("***** Arb Opportunity: %.4f for %.4f on %s vs %s *****\n", arb, amount, bestAsk.exg, bestBid.exg)
 					sendPair(bestBid, bestAsk, amount)
@@ -349,9 +402,11 @@ func findBestAsk(markets map[exchange.Exchange]filteredBook) market {
 // Find best arbitrage opportunity
 // Adjusts market amounts according to exchange positions
 func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bool) {
-	var bestBid, bestAsk market
-	bestOpp := 0.0
-	exists := false
+	var (
+		bestBid, bestAsk market
+		bestOpp          float64
+		exists           bool
+	)
 
 	// Compare each bid to all other asks
 	for exg1, fb1 := range markets {
@@ -362,7 +417,7 @@ func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bo
 				ableToBuy := exg2.MaxPos() - exg2.Position()
 				// If exg2 is not already max long
 				if ableToBuy >= cfg.Sec.MinOrder {
-					opp := fb1.bid.adjPrice - fb2.ask.adjPrice - calcNeededArb(exg2.Position(), exg1.Position(), exg2.MaxPos(), exg1.MaxPos())
+					opp := fb1.bid.adjPrice - fb2.ask.adjPrice - calcNeededArb(exg2, exg1)
 					// If best opportunity
 					if opp >= bestOpp {
 						bestBid = fb1.bid
@@ -381,15 +436,22 @@ func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bo
 }
 
 // Calculate arb needed for a trade based on existing positions
-func calcNeededArb(buyExgPos, sellExgPos, buyExgMax, sellExgMax float64) float64 {
-	// Middle between user-defined min and max
-	center := (cfg.Sec.MaxArb + cfg.Sec.MinArb) / 2
-	// Half distance from center to min and max
-	halfDist := (cfg.Sec.MaxArb - center) / 2
-	// Percent of max allowed position for each
-	buyExgPct := buyExgPos / buyExgMax
-	sellExgPct := sellExgPos / sellExgMax
+func calcNeededArb(buyExg, sellExg exchange.Exchange) float64 {
+	// If taking currency risk, add required premium
+	maxArb := cfg.Sec.MaxArb
+	if buyExg.CurrencyCode() != sellExg.CurrencyCode() {
+		maxArb += cfg.Sec.FXPremium
+	}
 
+	// Middle between min and max
+	center := (maxArb + cfg.Sec.MinArb) / 2
+	// Half distance from center to min and max
+	halfDist := (maxArb - center) / 2
+	// Percent of max
+	buyExgPct := buyExg.Position() / buyExg.MaxPos()
+	sellExgPct := sellExg.Position() / sellExg.MaxPos()
+
+	// Return required arb
 	return center + buyExgPct*halfDist - sellExgPct*halfDist
 }
 
