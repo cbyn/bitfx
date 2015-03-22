@@ -86,15 +86,14 @@ func (bf *Bitfinex) MaxPos() float64 {
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel
-func (bf *Bitfinex) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
-	// Check that connection is ok
-	if book, _ := bf.getBook(); book.Error != nil {
-		return book.Error
-	}
+func (bf *Bitfinex) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) exchange.Book {
+	// Initial book to return
+	book, _ := bf.getBook()
 
 	// Run read loop in new goroutine
 	go bf.runLoop(bookChan, doneChan)
-	return nil
+
+	return book
 }
 
 // HTTP read loop

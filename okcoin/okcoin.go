@@ -107,24 +107,30 @@ func (ok *OKCoin) MaxPos() float64 {
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel
-func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) error {
+func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) exchange.Book {
 	// Connect to websocket
 	ws, _, err := websocket.DefaultDialer.Dial(ok.websocketURL, http.Header{})
 	if err != nil {
-		return fmt.Errorf("OKCoin CommunicateBook error: %s\n", err)
+		return exchange.Book{Error: fmt.Errorf("OKCoin CommunicateBook error: %s\n", err)}
 	}
 
 	// Send request for book data
 	channel := fmt.Sprintf("ok_%s%s_depth", ok.symbol, ok.currency)
 	initMessage := request{Event: "addChannel", Channel: channel}
 	if err = ws.WriteJSON(initMessage); err != nil {
-		return fmt.Errorf("OKCoin CommunicateBook error: %s\n", err)
+		return exchange.Book{Error: fmt.Errorf("OKCoin CommunicateBook error: %s\n", err)}
 	}
+	// Get an initial book to return
+	_, data, err := ws.ReadMessage()
+	if err != nil {
+		return exchange.Book{Error: fmt.Errorf("OKCoin CommunicateBook error: %s\n", err)}
+	}
+	book := convertToBook(data)
 
 	// Run a read loop in new goroutine
 	go ok.runLoop(ws, initMessage, bookChan, doneChan)
 
-	return nil
+	return book
 }
 
 // Websocket read loop
