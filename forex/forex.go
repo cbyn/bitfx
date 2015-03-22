@@ -26,19 +26,14 @@ type Quote struct {
 }
 
 // CommunicateFX sends the latest FX quote to the supplied channel
-func CommunicateFX(symbol string, fxChan chan<- Quote, doneChan <-chan bool) (float64, error) {
-	// Check connection is ok to start
+func CommunicateFX(symbol string, fxChan chan<- Quote, doneChan <-chan bool) Quote {
+	// Initial quote to return
 	quote := getQuote(symbol)
-	if quote.Error != nil {
-		return 0, quote.Error
-	}
-	if quote.Price < .000001 {
-		return 0, fmt.Errorf("Price is zero")
-	}
 
 	// Run read loop in new goroutine
 	go runLoop(symbol, fxChan, doneChan)
-	return quote.Price, nil
+
+	return quote
 }
 
 // HTTP read loop

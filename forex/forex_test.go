@@ -16,21 +16,13 @@ func TestGetQuote(t *testing.T) {
 func TestCommunicateFX(t *testing.T) {
 	fxChan := make(chan Quote)
 	doneChan := make(chan bool)
-	_, err := CommunicateFX("cny", fxChan, doneChan)
-	if err != nil {
-		t.Fatal(err)
+	if quote := CommunicateFX("cny", fxChan, doneChan); quote.Error != nil {
+		t.Fatal(quote.Error)
 	}
 
-	quote := <-fxChan
-	t.Logf("Received quote")
-	// spew.Dump(quote)
-	if quote.Error != nil {
+	if quote := <-fxChan; quote.Error != nil {
 		t.Fatal(quote.Error)
 	}
-	quote = <-fxChan
 	t.Logf("Received quote")
 	// spew.Dump(quote)
-	if quote.Error != nil {
-		t.Fatal(quote.Error)
-	}
 }
