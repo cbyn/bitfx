@@ -1,8 +1,6 @@
 // Cryptocurrency arbitrage trading system
 
 // TODO:
-// Don't have exchanges close bookChan (and change tests)
-// Initialize book data the same as FX data (and remove hacky sleep call)
 // Use yahoo and openexchange for FX
 // Use arb logic for best bid and ask?
 // Use websocket for orders
@@ -15,6 +13,7 @@ import (
 	"bitfx2/exchange"
 	"bitfx2/forex"
 	"bitfx2/okcoin"
+	"code.google.com/p/gcfg"
 	"encoding/csv"
 	"flag"
 	"fmt"
@@ -24,8 +23,6 @@ import (
 	"os/exec"
 	"strconv"
 	"time"
-
-	"code.google.com/p/gcfg"
 )
 
 // Config stores user configuration
@@ -170,6 +167,12 @@ func checkStdin(doneChan chan<- bool) {
 
 // Handle all data communication
 func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filteredBook, newBook chan<- bool, doneChan <-chan bool) {
+	// Communicate forex
+	requestFX := make(chan string)
+	receiveFX := make(chan float64)
+	fxDoneChan := make(chan bool, 1)
+	go handleFX(requestFX, receiveFX, fxDoneChan)
+
 	// Filtered book data for each exchange
 	markets := make(map[exchange.Exchange]filteredBook)
 	// Channel to receive book data from exchanges
@@ -177,31 +180,24 @@ func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filtere
 	// Channel to notify exchanges when finished
 	exgDoneChan := make(chan bool, len(exchanges))
 
-	// Initiate communication with each exchange
+	// Initiate communication with each exchange and initialize markets map
 	for _, exg := range exchanges {
-		if err := exg.CommunicateBook(bookChan, exgDoneChan); err != nil {
-			log.Fatal(err)
+		book := exg.CommunicateBook(bookChan, exgDoneChan)
+		if book.Error != nil {
+			log.Fatal(book.Error)
 		}
+		requestFX <- exg.Currency()
+		markets[exg] = filterBook(book, <-receiveFX)
 	}
 
-	// Communicate forex
-	requestFX := make(chan string)
-	receiveFX := make(chan float64)
-	fxDoneChan := make(chan bool, 1)
-	go handleFX(requestFX, receiveFX, fxDoneChan)
-
+	// Handle data until notified of termination
 	for {
 		select {
 		// Incoming data from an exchange
 		case book := <-bookChan:
 			if !isError(book.Error) {
-				fxPrice := 1.0
-				// If a currency other than USD
-				if book.Exg.CurrencyCode() != 0 {
-					requestFX <- book.Exg.Currency()
-					fxPrice = <-receiveFX
-				}
-				markets[book.Exg] = filterBook(book, fxPrice)
+				requestFX <- book.Exg.Currency()
+				markets[book.Exg] = filterBook(book, <-receiveFX)
 				// Notify of new data if receiver is not busy
 				select {
 				case newBook <- true:
@@ -226,17 +222,19 @@ func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filtere
 // Handle FX quotes
 func handleFX(requestFX <-chan string, receiveFX chan<- float64, doneChan <-chan bool) {
 	prices := make(map[string]float64)
+	prices["usd"] = 1
 	fxChan := make(chan forex.Quote)
 	fxDoneChan := make(chan bool)
 	// Initiate communication and initialize prices map
 	for _, symbol := range currencies {
-		price, err := forex.CommunicateFX(symbol, fxChan, fxDoneChan)
-		if err != nil {
-			log.Fatal(err)
+		quote := forex.CommunicateFX(symbol, fxChan, fxDoneChan)
+		if quote.Error != nil {
+			log.Fatal(quote.Error)
 		}
-		prices[symbol] = price
+		prices[symbol] = quote.Price
 	}
 
+	// Handle data until notified of termination
 	for {
 		select {
 		// Incoming forex quote
@@ -290,9 +288,6 @@ func filterBook(book exchange.Book, fxPrice float64) filteredBook {
 
 // Trade on net position exits and arb opportunities
 func considerTrade(requestBook chan<- exchange.Exchange, receiveBook <-chan filteredBook, newBook <-chan bool) {
-	// Wait for data initialization
-	time.Sleep(5 * time.Second)
-
 	// Local data copy
 	var markets map[exchange.Exchange]filteredBook
 	// For tracking last trade, to prevent false repeats on slow exchange updates
