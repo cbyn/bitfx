@@ -125,7 +125,7 @@ func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan
 	if err != nil {
 		return exchange.Book{Error: fmt.Errorf("OKCoin CommunicateBook error: %s\n", err)}
 	}
-	book := convertToBook(data)
+	book := ok.convertToBook(data)
 
 	// Run a read loop in new goroutine
 	go ok.runLoop(ws, initMessage, bookChan, doneChan)
