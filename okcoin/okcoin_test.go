@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"testing"
-	"time"
 )
 
 var book exchange.Book
@@ -52,30 +51,23 @@ func TestCurrencyCodeUSD(t *testing.T) {
 func TestCommunicateBookUSD(t *testing.T) {
 	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
-	if err := ok.CommunicateBook(bookChan, doneChan); err != nil {
-		t.Fatal(err)
+	if book = ok.CommunicateBook(bookChan, doneChan); book.Error != nil {
+		t.Fatal(book.Error)
 	}
 
-	// Notify doneChan in 5 seconds
-	go func() {
-		time.Sleep(5 * time.Second)
-		doneChan <- true
-		t.Logf("Notified doneChan")
-	}()
-
-	for book = range bookChan {
-		t.Logf("Received book data")
-		// spew.Dump(book)
-		if len(book.Bids) != 20 || len(book.Asks) != 20 {
-			t.Fatal("Expected 20 book entries")
-		}
-		if book.Bids[0].Price < book.Bids[1].Price {
-			t.Fatal("Bids not sorted correctly")
-		}
-		if book.Asks[0].Price > book.Asks[1].Price {
-			t.Fatal("Asks not sorted correctly")
-		}
+	book = <-bookChan
+	t.Logf("Received book data")
+	// spew.Dump(book)
+	if len(book.Bids) != 20 || len(book.Asks) != 20 {
+		t.Fatal("Expected 20 book entries")
 	}
+	if book.Bids[0].Price < book.Bids[1].Price {
+		t.Fatal("Bids not sorted correctly")
+	}
+	if book.Asks[0].Price > book.Asks[1].Price {
+		t.Fatal("Asks not sorted correctly")
+	}
+	doneChan <- true
 }
 
 func TestNewOrderUSD(t *testing.T) {
@@ -159,31 +151,23 @@ func TestCurrencyCodeCNY(t *testing.T) {
 func TestCommunicateBookCNY(t *testing.T) {
 	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
-	err := ok.CommunicateBook(bookChan, doneChan)
-	if err != nil {
-		t.Fatal(err)
+	if book = ok.CommunicateBook(bookChan, doneChan); book.Error != nil {
+		t.Fatal(book.Error)
 	}
 
-	// Notify doneChan in 5 seconds
-	go func() {
-		time.Sleep(5 * time.Second)
-		doneChan <- true
-		t.Logf("Notified doneChan")
-	}()
-
-	for book = range bookChan {
-		t.Logf("Received book data")
-		// spew.Dump(book)
-		if len(book.Bids) != 20 || len(book.Asks) != 20 {
-			t.Fatal("Expected 20 book entries")
-		}
-		if book.Bids[0].Price < book.Bids[1].Price {
-			t.Fatal("Bids not sorted correctly")
-		}
-		if book.Asks[0].Price > book.Asks[1].Price {
-			t.Fatal("Asks not sorted correctly")
-		}
+	book = <-bookChan
+	t.Logf("Received book data")
+	// spew.Dump(book)
+	if len(book.Bids) != 20 || len(book.Asks) != 20 {
+		t.Fatal("Expected 20 book entries")
 	}
+	if book.Bids[0].Price < book.Bids[1].Price {
+		t.Fatal("Bids not sorted correctly")
+	}
+	if book.Asks[0].Price > book.Asks[1].Price {
+		t.Fatal("Asks not sorted correctly")
+	}
+	doneChan <- true
 }
 
 func TestNewOrderCNY(t *testing.T) {
