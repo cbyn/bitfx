@@ -105,7 +105,6 @@ func (bf *Bitfinex) runLoop(bookChan chan<- exchange.Book, doneChan <-chan bool)
 	for {
 		select {
 		case <-doneChan:
-			close(bookChan)
 			return
 		default:
 			book, newTimestamps := bf.getBook()
