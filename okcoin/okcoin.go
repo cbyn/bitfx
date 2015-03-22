@@ -177,7 +177,6 @@ func (ok *OKCoin) runLoop(ws *websocket.Conn, initMessage request, bookChan chan
 		select {
 		case <-doneChan:
 			// End if notified
-			close(bookChan)
 			ticker.Stop()
 			closeWS <- true
 			return
