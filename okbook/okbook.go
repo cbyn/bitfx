@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	ok  = okcoin.New("", "", "ltc", "cny", 1, 0.002)
+	ok  = okcoin.New("", "", "ltc", "cny", 1, 0.002, 1)
 	cny float64
 )
 
@@ -23,16 +23,18 @@ func main() {
 	}
 	log.SetOutput(logFile)
 	log.Println("Starting new run")
-	quote, err := forex.GetQuote("CNY=X")
-	if err != nil || quote.Price == 0 {
-		log.Fatal("Failed to retreive data")
+	fxChan := make(chan forex.Quote)
+	fxDoneChan := make(chan bool)
+	quote := forex.CommunicateFX("cny", fxChan, fxDoneChan)
+	if quote.Error != nil || quote.Price == 0 {
+		log.Fatal(quote.Error)
 	}
 	cny = quote.Price
 
 	doneChan := make(chan bool, 1)
 	bookChan := make(chan exchange.Book)
-	if err := ok.CommunicateBook(bookChan, doneChan); err != nil {
-		log.Fatal(err)
+	if book := ok.CommunicateBook(bookChan, doneChan); book.Error != nil {
+		log.Fatal(book.Error)
 	}
 	inputChan := make(chan rune)
 	go checkStdin(inputChan)
@@ -44,6 +46,7 @@ Loop:
 			printBook(book)
 		case <-inputChan:
 			doneChan <- true
+			fxDoneChan <- true
 			break Loop
 		}
 	}
