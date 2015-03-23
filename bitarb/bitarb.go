@@ -88,7 +88,7 @@ func setExchanges() {
 	exchanges = []exchange.Exchange{
 		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 2, 0.001, cfg.Sec.MaxPosBitfinex),
 		okcoin.New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.002, cfg.Sec.MaxPosOkUSD),
-		okcoin.New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), cfg.Sec.Symbol, "cny", 1, 0.000, cfg.Sec.MaxPosOkCNY),
+		okcoin.New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), cfg.Sec.Symbol, "cny", 2, 0.000, cfg.Sec.MaxPosOkCNY),
 	}
 	for _, exg := range exchanges {
 		log.Printf("Using exchange %s with priority %d and fee of %.4f", exg, exg.Priority(), exg.Fee())
