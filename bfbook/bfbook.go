@@ -9,7 +9,7 @@ import (
 	"os/exec"
 )
 
-var bf = bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), "ltc", "usd", 2, 0.001)
+var bf = bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), "ltc", "usd", 2, 0.001, 1)
 
 func main() {
 	filename := "bfbook.log"
@@ -22,8 +22,8 @@ func main() {
 
 	doneChan := make(chan bool, 1)
 	bookChan := make(chan exchange.Book)
-	if err := bf.CommunicateBook(bookChan, doneChan); err != nil {
-		log.Fatal(err)
+	if book := bf.CommunicateBook(bookChan, doneChan); book.Error != nil {
+		log.Fatal(book.Error)
 	}
 	inputChan := make(chan rune)
 	go checkStdin(inputChan)
