@@ -13,7 +13,6 @@ import (
 	"bitfx2/exchange"
 	"bitfx2/forex"
 	"bitfx2/okcoin"
-	"code.google.com/p/gcfg"
 	"encoding/csv"
 	"flag"
 	"fmt"
@@ -23,6 +22,8 @@ import (
 	"os/exec"
 	"strconv"
 	"time"
+
+	"code.google.com/p/gcfg"
 )
 
 // Config stores user configuration
@@ -211,7 +212,7 @@ func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filtere
 		case <-doneChan:
 			close(newBook)
 			fxDoneChan <- true
-			for range exchanges {
+			for _ = range exchanges {
 				exgDoneChan <- true
 			}
 			return
@@ -294,7 +295,7 @@ func considerTrade(requestBook chan<- exchange.Exchange, receiveBook <-chan filt
 	var lastArb, lastAmount float64
 
 	// Check for trade whenever new data is available
-	for range newBook {
+	for _ = range newBook {
 		// Build local snapshot of latest data
 		markets = make(map[exchange.Exchange]filteredBook)
 		for _, exg := range exchanges {
