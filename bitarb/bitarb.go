@@ -435,12 +435,14 @@ func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bo
 func calcNeededArb(buyExg, sellExg exchange.Exchange) float64 {
 	// If taking currency risk, add required premium
 	maxArb := cfg.Sec.MaxArb
+	minArb := cfg.Sec.MinArb
 	if buyExg.CurrencyCode() != sellExg.CurrencyCode() {
 		maxArb += cfg.Sec.FXPremium
+		minArb += cfg.Sec.FXPremium
 	}
 
 	// Middle between min and max
-	center := (maxArb + cfg.Sec.MinArb) / 2
+	center := (maxArb + minArb) / 2
 	// Half distance from center to min and max
 	halfDist := (maxArb - center) / 2
 	// Percent of max
