@@ -433,18 +433,14 @@ func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bo
 
 // Calculate arb needed for a trade based on existing positions
 func calcNeededArb(buyExg, sellExg exchange.Exchange) float64 {
-	// If taking currency risk, add required premium
-	maxArb := cfg.Sec.MaxArb
-	minArb := cfg.Sec.MinArb
-	if buyExg.CurrencyCode() != sellExg.CurrencyCode() {
-		maxArb += cfg.Sec.FXPremium
-		minArb += cfg.Sec.FXPremium
-	}
-
 	// Middle between min and max
-	center := (maxArb + minArb) / 2
+	center := (cfg.Sec.MaxArb + cfg.Sec.MinArb) / 2
 	// Half distance from center to min and max
-	halfDist := (maxArb - center) / 2
+	halfDist := (cfg.Sec.MaxArb - center) / 2
+	// If taking currency risk, add required premium
+	if buyExg.CurrencyCode() != sellExg.CurrencyCode() {
+		center += cfg.Sec.FXPremium
+	}
 	// Percent of max
 	buyExgPct := buyExg.Position() / buyExg.MaxPos()
 	sellExgPct := sellExg.Position() / sellExg.MaxPos()
