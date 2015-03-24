@@ -32,7 +32,7 @@ type Config struct {
 		Symbol         string  // Symbol to trade
 		MaxArb         float64 // Top limit for position entry
 		MinArb         float64 // Bottom limit for position exit
-		FXPremium      float64 // Ammount added to MaxArb for taking FX risk
+		FXPremium      float64 // Ammount added to arb for taking FX risk
 		MaxPosBitfinex float64 // Max position size
 		MaxPosOkUSD    float64 // Max position size
 		MaxPosOkCNY    float64 // Max position size

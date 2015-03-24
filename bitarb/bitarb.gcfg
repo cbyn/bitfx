@@ -2,7 +2,7 @@
 symbol         = "ltc" # Symbol to trade
 maxArb         = .025 # Top limit for position entry
 minArb         = -.01 # Bottom limit for position exit
-fxPremium      = .01 # Ammount added to MaxArb for taking FX risk
+fxPremium      = .01 # Ammount added to arb for taking FX risk
 maxPosBitfinex = 0 # Max position size
 maxPosOkUSD    = 0 # Max position size
 maxPosOkCNY    = 0 # Max position size
