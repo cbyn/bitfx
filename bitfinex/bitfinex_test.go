@@ -129,7 +129,4 @@ func TestNewOrder(t *testing.T) {
 	if id != 0 {
 		t.Fatal("Expected id = 0")
 	}
-	if err.Error() != "Bitfinex SendOrder error: Order side must be either 'buy' or 'sell'." {
-		t.Fatal("Expected error 'Bitfinex SendOrder error: Order side must be either 'buy' or 'sell'.' on bad order")
-	}
 }
