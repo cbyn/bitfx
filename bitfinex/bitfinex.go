@@ -9,7 +9,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -124,7 +123,7 @@ func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
 	url := fmt.Sprintf("%sbook/%s%s?limit_bids=%d&limit_asks=%d", URL, bf.symbol, bf.currency, 20, 20)
 	data, err := get(url)
 	if err != nil {
-		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}, timestamps
+		return exchange.Book{Error: fmt.Errorf("%s UpdateBook error: %s", bf, err.Error())}, timestamps
 	}
 
 	var tmp struct {
@@ -141,7 +140,7 @@ func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
 	}
 
 	if err := json.Unmarshal(data, &tmp); err != nil {
-		return exchange.Book{Error: errors.New("Bitfinex UpdateBook error: " + err.Error())}, timestamps
+		return exchange.Book{Error: fmt.Errorf("%s UpdateBook error: %s", bf, err.Error())}, timestamps
 	}
 
 	bids := make(exchange.BidItems, 20)
@@ -203,7 +202,7 @@ func (bf *Bitfinex) SendOrder(action, otype string, amount, price float64) (int6
 	// Send post request
 	data, err := bf.post(URL+"order/new", request)
 	if err != nil {
-		return 0, errors.New("Bitfinex SendOrder error: " + err.Error())
+		return 0, fmt.Errorf("%s SendOrder error: %s", bf, err.Error())
 	}
 
 	// Unmarshal response
@@ -213,10 +212,10 @@ func (bf *Bitfinex) SendOrder(action, otype string, amount, price float64) (int6
 	}
 	err = json.Unmarshal(data, &response)
 	if err != nil {
-		return 0, errors.New("Bitfinex SendOrder error: " + err.Error())
+		return 0, fmt.Errorf("%s SendOrder error: %s", bf, err.Error())
 	}
 	if response.Message != "" {
-		return 0, errors.New("Bitfinex SendOrder error: " + response.Message)
+		return 0, fmt.Errorf("%s SendOrder error: %s", bf, response.Message)
 	}
 
 	return response.ID, nil
@@ -238,7 +237,7 @@ func (bf *Bitfinex) CancelOrder(id int64) (bool, error) {
 	// Send post request
 	data, err := bf.post(URL+"order/cancel", request)
 	if err != nil {
-		return false, errors.New("Bitfinex CancelOrder error: " + err.Error())
+		return false, fmt.Errorf("%s CancelOrder error: %s", bf, err.Error())
 	}
 
 	// Unmarshal response
@@ -247,10 +246,10 @@ func (bf *Bitfinex) CancelOrder(id int64) (bool, error) {
 	}
 	err = json.Unmarshal(data, &response)
 	if err != nil {
-		return false, errors.New("Bitfinex CancelOrder error: " + err.Error())
+		return false, fmt.Errorf("%s CancelOrder error: %s", bf, err.Error())
 	}
 	if response.Message != "" {
-		return false, errors.New("Bitfinex CancelOrder error: " + response.Message)
+		return false, fmt.Errorf("%s CancelOrder error: %s", bf, response.Message)
 	}
 
 	return true, nil
@@ -275,7 +274,7 @@ func (bf *Bitfinex) GetOrderStatus(id int64) (exchange.Order, error) {
 	// Send post request
 	data, err := bf.post(URL+"order/status", request)
 	if err != nil {
-		return order, errors.New("Bitfinex GetOrderStatus error: " + err.Error())
+		return order, fmt.Errorf("%s GetOrderStatus error: %s", bf, err.Error())
 	}
 
 	// Unmarshal response
@@ -286,10 +285,10 @@ func (bf *Bitfinex) GetOrderStatus(id int64) (exchange.Order, error) {
 	}
 	err = json.Unmarshal(data, &response)
 	if err != nil {
-		return order, errors.New("Bitfinex GetOrderStatus error: " + err.Error())
+		return order, fmt.Errorf("%s GetOrderStatus error: %s", bf, err.Error())
 	}
 	if response.Message != "" {
-		return order, errors.New("Bitfinex GetOrderStatus error: " + response.Message)
+		return order, fmt.Errorf("%s GetOrderStatus error: %s", bf, response.Message)
 	}
 
 	if response.IsLive {
@@ -346,7 +345,7 @@ func get(url string) ([]byte, error) {
 		return []byte{}, err
 	}
 	if resp.StatusCode != 200 {
-		return []byte{}, errors.New(resp.Status)
+		return []byte{}, fmt.Errorf(resp.Status)
 	}
 	defer resp.Body.Close()
 
