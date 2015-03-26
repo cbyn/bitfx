@@ -20,7 +20,7 @@ type Exchange interface {
 	SendOrder(action, otype string, amount, price float64) (int64, error)
 	CancelOrder(id int64) (bool, error)
 	GetOrderStatus(id int64) (Order, error)
-	CryptoFee() bool
+	HasCryptoFee() bool
 }
 
 // Order status data from the exchange *****************************************
