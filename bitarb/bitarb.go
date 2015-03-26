@@ -1,8 +1,8 @@
 // Cryptocurrency arbitrage trading system
 
 // TODO:
-// Adjust amounts for fees
 // Set maxPos relative to price?
+// - maxShort = maxPos, maxBuyPower = available currency
 // Quit bitarb on repeated errors?
 // Use yahoo and openexchange for FX?
 // Use arb logic for best bid and ask?
@@ -518,18 +518,22 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 		}
 		// Continues while order status is non-empty
 	}
+
+	filledAmount := order.FilledAmount
+
 	// Update position
 	if action == "buy" {
-		position := exg.Position() + order.FilledAmount
-		exg.SetPosition(position)
+		if exg.HasCryptoFee() {
+			filledAmount = filledAmount * (1 - exg.Fee())
+		}
+		exg.SetPosition(exg.Position() + filledAmount)
 	} else {
-		position := exg.Position() - order.FilledAmount
-		exg.SetPosition(position)
+		exg.SetPosition(exg.Position() - filledAmount)
 	}
 	// Print to log
 	log.Printf("%s trade: %s %.4f at %.4f\n", exg, action, order.FilledAmount, price)
 
-	fillChan <- order.FilledAmount
+	fillChan <- filledAmount
 }
 
 // Print relevant data to terminal
