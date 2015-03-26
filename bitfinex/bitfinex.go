@@ -84,6 +84,11 @@ func (bf *Bitfinex) MaxPos() float64 {
 	return bf.maxPos
 }
 
+// HasCrytpoFee returns true if fee is taken in cryptocurrency on buys
+func (bf *Bitfinex) HasCryptoFee() bool {
+	return false
+}
+
 // CommunicateBook sends the latest available book data on the supplied channel
 func (bf *Bitfinex) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) exchange.Book {
 	// Initial book to return

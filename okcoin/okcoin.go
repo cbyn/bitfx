@@ -107,6 +107,11 @@ func (ok *OKCoin) MaxPos() float64 {
 	return ok.maxPos
 }
 
+// HasCrytpoFee returns true if fee is taken in cryptocurrency on buys
+func (ok *OKCoin) HasCryptoFee() bool {
+	return true
+}
+
 // CommunicateBook sends the latest available book data on the supplied channel
 func (ok *OKCoin) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) exchange.Book {
 	// Connect to websocket
