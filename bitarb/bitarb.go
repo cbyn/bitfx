@@ -36,11 +36,11 @@ type Config struct {
 		MaxArb             float64 // Top limit for position entry
 		MinArb             float64 // Bottom limit for position exit
 		FXPremium          float64 // Amount added to arb for taking FX risk
-		MaxPosBitfinex     float64 // Max position size
+		AvailShortBitfinex float64 // Max short position size
 		AvailFundsBitfinex float64 // Fiat available for trading
-		MaxPosOKusd        float64 // Max position size
+		AvailShortOKusd    float64 // Max short position size
 		AvailFundsOKusd    float64 // Fiat available for trading
-		MaxPosOKcny        float64 // Max position size
+		AvailShortOKcny    float64 // Max short position size
 		AvailFundsOKcny    float64 // Fiat available for trading
 		MinNetPos          float64 // Min acceptable net position
 		MinOrder           float64 // Min order size for arb trade
@@ -92,9 +92,9 @@ func setLog() {
 // Initialize exchanges
 func setExchanges() {
 	exchanges = []exchange.Exchange{
-		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 2, 0.001, cfg.Sec.MaxPosBitfinex, cfg.Sec.AvailFundsBitfinex),
-		okcoin.New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.002, cfg.Sec.MaxPosOKusd, cfg.Sec.AvailFundsOKusd),
-		okcoin.New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), cfg.Sec.Symbol, "cny", 3, 0.000, cfg.Sec.MaxPosOKcny, cfg.Sec.AvailFundsOKcny),
+		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 2, 0.001, cfg.Sec.AvailShortBitfinex, cfg.Sec.AvailFundsBitfinex),
+		okcoin.New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.002, cfg.Sec.AvailShortOKusd, cfg.Sec.AvailFundsOKusd),
+		okcoin.New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), cfg.Sec.Symbol, "cny", 3, 0.000, cfg.Sec.AvailShortOKcny, cfg.Sec.AvailFundsOKcny),
 	}
 	for _, exg := range exchanges {
 		log.Printf("Using exchange %s with priority %d and fee of %.4f", exg, exg.Priority(), exg.Fee())
@@ -306,9 +306,11 @@ func considerTrade(requestBook chan<- exchange.Exchange, receiveBook <-chan filt
 		markets = make(map[exchange.Exchange]filteredBook)
 		for _, exg := range exchanges {
 			requestBook <- exg
-			// Don't use potentially stale data
+			// Don't use stale data
 			if fb := <-receiveBook; time.Since(fb.time) < time.Minute {
 				markets[exg] = fb
+				// Set MaxPos according to fiat funds and crypto available to short
+				exg.SetMaxPos(math.Min(exg.AvailFunds()/fb.ask.orderPrice, exg.AvailShort()))
 			}
 		}
 		// If net long from a previous missed leg, hit best bid
