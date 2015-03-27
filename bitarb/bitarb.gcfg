@@ -1,12 +1,15 @@
 [sec]
-symbol         = "ltc" # Symbol to trade
-maxArb         = .02 # Top limit for position entry
-minArb         = -.005 # Bottom limit for position exit
-fxPremium      = 0 # Amount added to arb for taking FX risk
-maxPosBitfinex = 0 # Max position size
-maxPosOkUSD    = 0 # Max position size
-maxPosOkCNY    = 0 # Max position size
-minNetPos      = .1 # Min acceptable net position
-minOrder       = 1 # Min order size for arb trade
-maxOrder       = 50 # Max order size for arb trade
-printOn        = true # Display results in terminal
+symbol             = "ltc" # Symbol to trade
+maxArb             = .025 # Top limit for position entry
+minArb             = -.01 # Bottom limit for position exit
+fxPremium          = 0 # Amount added to arb for taking FX risk
+maxPosBitfinex     = 0 # Max position size
+availFundsBitfinex = 0 # Fiat available for trading
+maxPosOKusd        = 0 # Max position size
+availFundsOKusd    = 0 # Fiat available for trading
+maxPosOKcny        = 0 # Max position size
+availFundsOKcny    = 0 # Fiat available for trading
+minNetPos          = .1 # Min acceptable net position
+minOrder           = 1 # Min order size for arb trade
+maxOrder           = 50 # Max order size for arb trade
+printOn            = true # Display results in terminal
