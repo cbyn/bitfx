@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	ok  = okcoin.New("", "", "ltc", "cny", 1, 0.002, 1)
+	ok  = okcoin.New("", "", "ltc", "cny", 1, 0.002, 1, 2)
 	cny float64
 )
 
