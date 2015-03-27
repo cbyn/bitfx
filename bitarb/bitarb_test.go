@@ -36,8 +36,10 @@ func TestCalculateNeededArb(t *testing.T) {
 		{-200, 0, .002},
 		{-100, 100, .002},
 	}
-	buyExg := okcoin.New("", "", "", "usd", 1, 0.002, 500)
-	sellExg := bitfinex.New("", "", "", "usd", 2, 0.001, 500)
+	buyExg := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
+	buyExg.SetMaxPos(500)
+	sellExg := bitfinex.New("", "", "", "usd", 2, 0.001, 500, 0)
+	sellExg.SetMaxPos(500)
 
 	for _, neededArb := range neededArbTests {
 		buyExg.SetPosition(neededArb.buyExgPos)
@@ -62,8 +64,10 @@ func TestCalculateNeededArb(t *testing.T) {
 		{-200, 0, .012},
 		{-100, 100, .012},
 	}
-	buyExg = okcoin.New("", "", "", "cny", 1, 0.002, 500)
-	sellExg = bitfinex.New("", "", "", "usd", 2, 0.001, 500)
+	buyExg = okcoin.New("", "", "", "cny", 1, 0.002, 500, 0)
+	buyExg.SetMaxPos(500)
+	sellExg = bitfinex.New("", "", "", "usd", 2, 0.001, 500, 0)
+	sellExg.SetMaxPos(500)
 
 	for _, neededArb := range neededArbTests {
 		buyExg.SetPosition(neededArb.buyExgPos)
@@ -78,7 +82,7 @@ func TestCalculateNeededArb(t *testing.T) {
 
 func TestFilterBook(t *testing.T) {
 	testBook := exchange.Book{
-		Exg: okcoin.New("", "", "", "usd", 1, 0.002, 500),
+		Exg: okcoin.New("", "", "", "usd", 1, 0.002, 500, 0),
 		Bids: exchange.BidItems{
 			0: {Price: 1.90, Amount: 10},
 			1: {Price: 1.80, Amount: 10},
@@ -90,6 +94,7 @@ func TestFilterBook(t *testing.T) {
 			2: {Price: 2.30, Amount: 10},
 		},
 	}
+	testBook.Exg.SetMaxPos(500)
 	market := filterBook(testBook, 1)
 	if math.Abs(market.bid.orderPrice-1.70) > .000001 {
 		t.Errorf("Wrong bid order price")
@@ -136,7 +141,7 @@ func TestFilterBook(t *testing.T) {
 	}
 
 	testBook = exchange.Book{
-		Exg: okcoin.New("", "", "", "usd", 2, 0.002, 500),
+		Exg: okcoin.New("", "", "", "usd", 2, 0.002, 500, 0),
 		Bids: exchange.BidItems{
 			0: {Price: 1.90, Amount: 30},
 			1: {Price: 1.80, Amount: 10},
@@ -148,6 +153,7 @@ func TestFilterBook(t *testing.T) {
 			2: {Price: 2.30, Amount: 10},
 		},
 	}
+	testBook.Exg.SetMaxPos(500)
 	market = filterBook(testBook, 1)
 	if math.Abs(market.bid.orderPrice-1.90) > .000001 {
 		t.Errorf("Wrong bid order price")
@@ -196,9 +202,12 @@ func TestFilterBook(t *testing.T) {
 
 func TestFindBestBid(t *testing.T) {
 	markets := make(map[exchange.Exchange]filteredBook)
-	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
-	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
-	exg3 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
+	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
+	exg1.SetMaxPos(500)
+	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
+	exg2.SetMaxPos(500)
+	exg3 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
+	exg2.SetMaxPos(500)
 	markets[exg1] = filteredBook{bid: market{adjPrice: 2.00, amount: 500}}
 	markets[exg2] = filteredBook{bid: market{adjPrice: 1.99}}
 	markets[exg3] = filteredBook{bid: market{adjPrice: 1.98}}
@@ -217,9 +226,12 @@ func TestFindBestBid(t *testing.T) {
 
 func TestFindBestAsk(t *testing.T) {
 	markets := make(map[exchange.Exchange]filteredBook)
-	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
-	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
-	exg3 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
+	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
+	exg1.SetMaxPos(500)
+	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
+	exg2.SetMaxPos(500)
+	exg3 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
+	exg2.SetMaxPos(500)
 	markets[exg1] = filteredBook{ask: market{adjPrice: 1.98, amount: 500}}
 	markets[exg2] = filteredBook{ask: market{adjPrice: 1.99}}
 	markets[exg3] = filteredBook{ask: market{adjPrice: 2.00}}
@@ -239,9 +251,12 @@ func TestFindBestAsk(t *testing.T) {
 func TestFindBestArb(t *testing.T) {
 	// No opportunity
 	markets := make(map[exchange.Exchange]filteredBook)
-	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
-	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
-	exg3 := okcoin.New("", "", "", "usd", 1, 0.002, 500)
+	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
+	exg1.SetMaxPos(500)
+	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
+	exg2.SetMaxPos(500)
+	exg3 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
+	exg3.SetMaxPos(500)
 	markets[exg1] = filteredBook{
 		bid: market{adjPrice: 1.98, amount: 50, exg: exg1},
 		ask: market{adjPrice: 2.00, amount: 50, exg: exg1},
