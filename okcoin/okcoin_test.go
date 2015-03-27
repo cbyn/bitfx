@@ -9,7 +9,7 @@ import (
 )
 
 var book exchange.Book
-var ok = New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), "ltc", "usd", 1, 0.002, .1)
+var ok = New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), "ltc", "usd", 1, 0.002, .1, 2)
 
 func TestPriority(t *testing.T) {
 	if ok.Priority() != 1 {
@@ -141,7 +141,7 @@ func TestNewOrderUSD(t *testing.T) {
 func TestCurrencyCodeCNY(t *testing.T) {
 	// Reset global variables
 	book = exchange.Book{}
-	ok = New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), "ltc", "cny", 1, 0.002, .1)
+	ok = New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), "ltc", "cny", 1, 0.002, .1, 2)
 
 	if ok.CurrencyCode() != 1 {
 		t.Fatal("Currency code should be 1")
