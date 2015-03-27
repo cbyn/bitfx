@@ -16,6 +16,7 @@ type Exchange interface {
 	SetMaxPos(float64)
 	MaxPos() float64
 	AvailFunds() float64
+	AvailShort() float64
 	Currency() string
 	CurrencyCode() byte
 	CommunicateBook(bookChan chan<- Book, doneChan <-chan bool) Book
