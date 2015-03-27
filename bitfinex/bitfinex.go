@@ -23,14 +23,14 @@ const URL = "https://api.bitfinex.com/v1/"
 
 // Bitfinex exchange information
 type Bitfinex struct {
-	key, secret, symbol, currency, name string
-	priority                            int
-	position, fee, maxPos, availFunds   float64
-	currencyCode                        byte
+	key, secret, symbol, currency, name           string
+	priority                                      int
+	position, fee, maxPos, availShort, availFunds float64
+	currencyCode                                  byte
 }
 
 // New returns a pointer to a new Bitfinex instance
-func New(key, secret, symbol, currency string, priority int, fee, maxPos, availFunds float64) *Bitfinex {
+func New(key, secret, symbol, currency string, priority int, fee, availShort, availFunds float64) *Bitfinex {
 	return &Bitfinex{
 		key:          key,
 		secret:       secret,
@@ -38,7 +38,7 @@ func New(key, secret, symbol, currency string, priority int, fee, maxPos, availF
 		currency:     currency,
 		priority:     priority,
 		fee:          fee,
-		maxPos:       maxPos,
+		availShort:   availShort,
 		availFunds:   availFunds,
 		currencyCode: 0,
 		name:         fmt.Sprintf("Bitfinex(%s)", currency),
@@ -93,6 +93,11 @@ func (bf *Bitfinex) MaxPos() float64 {
 // AvailFunds getter method
 func (bf *Bitfinex) AvailFunds() float64 {
 	return bf.availFunds
+}
+
+// AvailShort getter method
+func (bf *Bitfinex) AvailShort() float64 {
+	return bf.availShort
 }
 
 // HasCrytpoFee returns true if fee is taken in cryptocurrency on buys
