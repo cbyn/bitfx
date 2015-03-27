@@ -41,8 +41,8 @@ func TestCurrencyCode(t *testing.T) {
 }
 
 func TestMaxPos(t *testing.T) {
-	if math.Abs(bf.MaxPos()-.1) > .000001 {
-		t.Fatal("MaxPos should be .1")
+	if math.Abs(bf.MaxPos()) > .000001 {
+		t.Fatal("MaxPos should be 0")
 	}
 }
 
