@@ -24,7 +24,7 @@ import (
 type OKCoin struct {
 	key, secret, symbol, currency, websocketURL, restURL, name string
 	priority                                                   int
-	position, fee, maxPos                                      float64
+	position, fee, maxPos, availFunds                          float64
 	currencyCode                                               byte
 }
 
@@ -36,7 +36,7 @@ type request struct {
 }
 
 // New returns a pointer to a new OKCoin instance
-func New(key, secret, symbol, currency string, priority int, fee, maxPos float64) *OKCoin {
+func New(key, secret, symbol, currency string, priority int, fee, maxPos, availFunds float64) *OKCoin {
 	// URL depends on currency
 	var websocketURL, restURL string
 	var currencyCode byte
@@ -62,6 +62,7 @@ func New(key, secret, symbol, currency string, priority int, fee, maxPos float64
 		priority:     priority,
 		fee:          fee,
 		maxPos:       maxPos,
+		availFunds:   availFunds,
 		currencyCode: currencyCode,
 		name:         fmt.Sprintf("OKCoin(%s)", currency),
 	}
@@ -102,9 +103,19 @@ func (ok *OKCoin) CurrencyCode() byte {
 	return ok.currencyCode
 }
 
+// SetMaxPos setter method
+func (ok *OKCoin) SetMaxPos(maxPos float64) {
+	ok.maxPos = maxPos
+}
+
 // MaxPos getter method
 func (ok *OKCoin) MaxPos() float64 {
 	return ok.maxPos
+}
+
+// AvailFunds getter method
+func (ok *OKCoin) AvailFunds() float64 {
+	return ok.availFunds
 }
 
 // HasCrytpoFee returns true if fee is taken in cryptocurrency on buys
