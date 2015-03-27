@@ -9,7 +9,7 @@ import (
 )
 
 var book exchange.Book
-var bf = New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), "ltc", "usd", 2, 0.001, .1)
+var bf = New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), "ltc", "usd", 2, 0.001, .1, 2)
 
 func TestPriority(t *testing.T) {
 	if bf.Priority() != 2 {
