@@ -13,7 +13,9 @@ type Exchange interface {
 	Fee() float64
 	SetPosition(float64)
 	Position() float64
+	SetMaxPos() float64
 	MaxPos() float64
+	AvailFunds() float64
 	Currency() string
 	CurrencyCode() byte
 	CommunicateBook(bookChan chan<- Book, doneChan <-chan bool) Book
