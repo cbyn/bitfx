@@ -18,20 +18,18 @@ import (
 	"time"
 )
 
-// URL for API
-const URL = "https://api.bitfinex.com/v1/"
-
-// Bitfinex exchange information
-type Bitfinex struct {
+// Client contains all exchange information
+type Client struct {
 	key, secret, symbol, currency, name           string
 	priority                                      int
 	position, fee, maxPos, availShort, availFunds float64
 	currencyCode                                  byte
+	baseURL                                       string
 }
 
 // New returns a pointer to a new Bitfinex instance
-func New(key, secret, symbol, currency string, priority int, fee, availShort, availFunds float64) *Bitfinex {
-	return &Bitfinex{
+func New(key, secret, symbol, currency string, priority int, fee, availShort, availFunds float64) *Client {
+	return &Client{
 		key:          key,
 		secret:       secret,
 		symbol:       symbol,
@@ -42,82 +40,83 @@ func New(key, secret, symbol, currency string, priority int, fee, availShort, av
 		availFunds:   availFunds,
 		currencyCode: 0,
 		name:         fmt.Sprintf("Bitfinex(%s)", currency),
+		baseURL:      "https://api.bitfinex.com/v1/",
 	}
 }
 
 // String implements the Stringer interface
-func (bf *Bitfinex) String() string {
-	return bf.name
+func (client *Client) String() string {
+	return client.name
 }
 
 // Priority returns the exchange priority for order execution
-func (bf *Bitfinex) Priority() int {
-	return bf.priority
+func (client *Client) Priority() int {
+	return client.priority
 }
 
 // Fee returns the exchange order fee
-func (bf *Bitfinex) Fee() float64 {
-	return bf.fee
+func (client *Client) Fee() float64 {
+	return client.fee
 }
 
-// SetPosition setter method
-func (bf *Bitfinex) SetPosition(pos float64) {
-	bf.position = pos
+// SetPosition sets the exchange position
+func (client *Client) SetPosition(pos float64) {
+	client.position = pos
 }
 
-// Position getter method
-func (bf *Bitfinex) Position() float64 {
-	return bf.position
+// Position returns the exchange position
+func (client *Client) Position() float64 {
+	return client.position
 }
 
-// Currency getter method
-func (bf *Bitfinex) Currency() string {
-	return bf.currency
+// Currency returns the exchange currency
+func (client *Client) Currency() string {
+	return client.currency
 }
 
-// CurrencyCode getter method
-func (bf *Bitfinex) CurrencyCode() byte {
-	return bf.currencyCode
+// CurrencyCode returns the exchange currency code
+func (client *Client) CurrencyCode() byte {
+	return client.currencyCode
 }
 
-// SetMaxPos setter method
-func (bf *Bitfinex) SetMaxPos(maxPos float64) {
-	bf.maxPos = maxPos
+// SetMaxPos sets the exchange max position
+func (client *Client) SetMaxPos(maxPos float64) {
+	client.maxPos = maxPos
 }
 
-// MaxPos getter method
-func (bf *Bitfinex) MaxPos() float64 {
-	return bf.maxPos
+// MaxPos returns the exchange max position
+func (client *Client) MaxPos() float64 {
+	return client.maxPos
 }
 
-// AvailFunds getter method
-func (bf *Bitfinex) AvailFunds() float64 {
-	return bf.availFunds
+// AvailFunds returns the exchange available funds
+func (client *Client) AvailFunds() float64 {
+	return client.availFunds
 }
 
-// AvailShort getter method
-func (bf *Bitfinex) AvailShort() float64 {
-	return bf.availShort
+// AvailShort returns the exchange quantity available for short selling
+func (client *Client) AvailShort() float64 {
+	return client.availShort
 }
 
 // HasCrytpoFee returns true if fee is taken in cryptocurrency on buys
-func (bf *Bitfinex) HasCryptoFee() bool {
+func (client *Client) HasCryptoFee() bool {
 	return false
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel
-func (bf *Bitfinex) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) exchange.Book {
+func (client *Client) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) exchange.Book {
 	// Initial book to return
-	book, _ := bf.getBook()
+	book, _ := client.getBook()
 
 	// Run read loop in new goroutine
-	go bf.runLoop(bookChan, doneChan)
+	go client.runLoop(bookChan, doneChan)
 
 	return book
 }
 
 // HTTP read loop
-func (bf *Bitfinex) runLoop(bookChan chan<- exchange.Book, doneChan <-chan bool) {
+func (client *Client) runLoop(bookChan chan<- exchange.Book, doneChan <-chan bool) {
 	// Used to compare timestamps
 	oldTimestamps := make([]float64, 40)
 
@@ -126,7 +125,7 @@ func (bf *Bitfinex) runLoop(bookChan chan<- exchange.Book, doneChan <-chan bool)
 		case <-doneChan:
 			return
 		default:
-			book, newTimestamps := bf.getBook()
+			book, newTimestamps := client.getBook()
 			if bookChanged(oldTimestamps, newTimestamps) {
 				bookChan <- book
 			}
@@ -136,15 +135,15 @@ func (bf *Bitfinex) runLoop(bookChan chan<- exchange.Book, doneChan <-chan bool)
 }
 
 // Get book data with an http request
-func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
+func (client *Client) getBook() (exchange.Book, []float64) {
 	// Used to compare timestamps
 	timestamps := make([]float64, 40)
 
 	// Send get request
-	url := fmt.Sprintf("%sbook/%s%s?limit_bids=%d&limit_asks=%d", URL, bf.symbol, bf.currency, 20, 20)
-	data, err := get(url)
+	url := fmt.Sprintf("%sbook/%s%s?limit_bids=%d&limit_asks=%d", client.baseURL, client.symbol, client.currency, 20, 20)
+	data, err := client.get(url)
 	if err != nil {
-		return exchange.Book{Error: fmt.Errorf("%s UpdateBook error: %s", bf, err.Error())}, timestamps
+		return exchange.Book{Error: fmt.Errorf("%s UpdateBook error: %s", client, err.Error())}, timestamps
 	}
 
 	var tmp struct {
@@ -161,7 +160,7 @@ func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
 	}
 
 	if err := json.Unmarshal(data, &tmp); err != nil {
-		return exchange.Book{Error: fmt.Errorf("%s UpdateBook error: %s", bf, err.Error())}, timestamps
+		return exchange.Book{Error: fmt.Errorf("%s UpdateBook error: %s", client, err.Error())}, timestamps
 	}
 
 	bids := make(exchange.BidItems, 20)
@@ -180,7 +179,7 @@ func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
 
 	// Return book
 	return exchange.Book{
-		Exg:   bf,
+		Exg:   client,
 		Time:  time.Now(),
 		Bids:  bids,
 		Asks:  asks,
@@ -188,6 +187,7 @@ func (bf *Bitfinex) getBook() (exchange.Book, []float64) {
 	}, timestamps
 }
 
+// Returns true if the book has changed
 func bookChanged(timestamps1, timestamps2 []float64) bool {
 	for i := 0; i < 40; i++ {
 		if math.Abs(timestamps1[i]-timestamps2[i]) > .5 {
@@ -197,8 +197,8 @@ func bookChanged(timestamps1, timestamps2 []float64) bool {
 	return false
 }
 
-// SendOrder to the exchange
-func (bf *Bitfinex) SendOrder(action, otype string, amount, price float64) (int64, error) {
+// SendOrder sends an order to the exchange
+func (client *Client) SendOrder(action, otype string, amount, price float64) (int64, error) {
 	// Create request struct
 	request := struct {
 		URL      string  `json:"request"`
@@ -212,7 +212,7 @@ func (bf *Bitfinex) SendOrder(action, otype string, amount, price float64) (int6
 	}{
 		"/v1/order/new",
 		strconv.FormatInt(time.Now().UnixNano(), 10),
-		bf.symbol + bf.currency,
+		client.symbol + client.currency,
 		amount,
 		price,
 		"bitfinex",
@@ -221,9 +221,9 @@ func (bf *Bitfinex) SendOrder(action, otype string, amount, price float64) (int6
 	}
 
 	// Send post request
-	data, err := bf.post(URL+"order/new", request)
+	data, err := client.post(client.baseURL+"order/new", request)
 	if err != nil {
-		return 0, fmt.Errorf("%s SendOrder error: %s", bf, err.Error())
+		return 0, fmt.Errorf("%s SendOrder error: %s", client, err.Error())
 	}
 
 	// Unmarshal response
@@ -233,17 +233,17 @@ func (bf *Bitfinex) SendOrder(action, otype string, amount, price float64) (int6
 	}
 	err = json.Unmarshal(data, &response)
 	if err != nil {
-		return 0, fmt.Errorf("%s SendOrder error: %s", bf, err.Error())
+		return 0, fmt.Errorf("%s SendOrder error: %s", client, err.Error())
 	}
 	if response.Message != "" {
-		return 0, fmt.Errorf("%s SendOrder error: %s", bf, response.Message)
+		return 0, fmt.Errorf("%s SendOrder error: %s", client, response.Message)
 	}
 
 	return response.ID, nil
 }
 
-// CancelOrder on the exchange
-func (bf *Bitfinex) CancelOrder(id int64) (bool, error) {
+// CancelOrder cancels an order on the exchange
+func (client *Client) CancelOrder(id int64) (bool, error) {
 	// Create request struct
 	request := struct {
 		URL     string `json:"request"`
@@ -256,9 +256,9 @@ func (bf *Bitfinex) CancelOrder(id int64) (bool, error) {
 	}
 
 	// Send post request
-	data, err := bf.post(URL+"order/cancel", request)
+	data, err := client.post(client.baseURL+"order/cancel", request)
 	if err != nil {
-		return false, fmt.Errorf("%s CancelOrder error: %s", bf, err.Error())
+		return false, fmt.Errorf("%s CancelOrder error: %s", client, err.Error())
 	}
 
 	// Unmarshal response
@@ -267,17 +267,17 @@ func (bf *Bitfinex) CancelOrder(id int64) (bool, error) {
 	}
 	err = json.Unmarshal(data, &response)
 	if err != nil {
-		return false, fmt.Errorf("%s CancelOrder error: %s", bf, err.Error())
+		return false, fmt.Errorf("%s CancelOrder error: %s", client, err.Error())
 	}
 	if response.Message != "" {
-		return false, fmt.Errorf("%s CancelOrder error: %s", bf, response.Message)
+		return false, fmt.Errorf("%s CancelOrder error: %s", client, response.Message)
 	}
 
 	return true, nil
 }
 
-// GetOrderStatus of an order on the exchange
-func (bf *Bitfinex) GetOrderStatus(id int64) (exchange.Order, error) {
+// GetOrderStatus gets the status of an order on the exchange
+func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
 	// Create request struct
 	request := struct {
 		URL     string `json:"request"`
@@ -293,9 +293,9 @@ func (bf *Bitfinex) GetOrderStatus(id int64) (exchange.Order, error) {
 	var order exchange.Order
 
 	// Send post request
-	data, err := bf.post(URL+"order/status", request)
+	data, err := client.post(client.baseURL+"order/status", request)
 	if err != nil {
-		return order, fmt.Errorf("%s GetOrderStatus error: %s", bf, err.Error())
+		return order, fmt.Errorf("%s GetOrderStatus error: %s", client, err.Error())
 	}
 
 	// Unmarshal response
@@ -306,10 +306,10 @@ func (bf *Bitfinex) GetOrderStatus(id int64) (exchange.Order, error) {
 	}
 	err = json.Unmarshal(data, &response)
 	if err != nil {
-		return order, fmt.Errorf("%s GetOrderStatus error: %s", bf, err.Error())
+		return order, fmt.Errorf("%s GetOrderStatus error: %s", client, err.Error())
 	}
 	if response.Message != "" {
-		return order, fmt.Errorf("%s GetOrderStatus error: %s", bf, response.Message)
+		return order, fmt.Errorf("%s GetOrderStatus error: %s", client, response.Message)
 	}
 
 	if response.IsLive {
@@ -321,8 +321,8 @@ func (bf *Bitfinex) GetOrderStatus(id int64) (exchange.Order, error) {
 	return order, nil
 }
 
-// authenticated POST
-func (bf *Bitfinex) post(url string, payload interface{}) ([]byte, error) {
+// Authenticated POST
+func (client *Client) post(url string, payload interface{}) ([]byte, error) {
 	// Payload = parameters-dictionary -> JSON encode -> base64
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -331,11 +331,10 @@ func (bf *Bitfinex) post(url string, payload interface{}) ([]byte, error) {
 	payloadBase64 := base64.StdEncoding.EncodeToString(payloadJSON)
 
 	// Signature = HMAC-SHA384(payload, api-secret) as hexadecimal
-	h := hmac.New(sha512.New384, []byte(bf.secret))
+	h := hmac.New(sha512.New384, []byte(client.secret))
 	h.Write([]byte(payloadBase64))
 	signature := hex.EncodeToString(h.Sum(nil))
 
-	client := &http.Client{}
 	req, err := http.NewRequest("POST", url, nil)
 	// req.Close = true
 	if err != nil {
@@ -346,11 +345,12 @@ func (bf *Bitfinex) post(url string, payload interface{}) ([]byte, error) {
 	// X-BFX-APIKEY
 	// X-BFX-PAYLOAD
 	// X-BFX-SIGNATURE
-	req.Header.Add("X-BFX-APIKEY", bf.key)
+	req.Header.Add("X-BFX-APIKEY", client.key)
 	req.Header.Add("X-BFX-PAYLOAD", payloadBase64)
 	req.Header.Add("X-BFX-SIGNATURE", signature)
 
-	resp, err := client.Do(req)
+	httpClient := http.Client{}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -359,16 +359,16 @@ func (bf *Bitfinex) post(url string, payload interface{}) ([]byte, error) {
 	return ioutil.ReadAll(resp.Body)
 }
 
-// unauthenticated get
-func get(url string) ([]byte, error) {
+// Unauthenticated get
+func (client *Client) get(url string) ([]byte, error) {
 	resp, err := http.Get(url)
+	defer resp.Body.Close()
 	if err != nil {
 		return []byte{}, err
 	}
 	if resp.StatusCode != 200 {
 		return []byte{}, fmt.Errorf(resp.Status)
 	}
-	defer resp.Body.Close()
 
 	return ioutil.ReadAll(resp.Body)
 }
