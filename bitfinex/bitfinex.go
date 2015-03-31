@@ -20,11 +20,10 @@ import (
 
 // Client contains all exchange information
 type Client struct {
-	key, secret, symbol, currency, name           string
+	key, secret, symbol, currency, name, baseURL  string
 	priority                                      int
 	position, fee, maxPos, availShort, availFunds float64
 	currencyCode                                  byte
-	baseURL                                       string
 }
 
 // New returns a pointer to a new Bitfinex instance
