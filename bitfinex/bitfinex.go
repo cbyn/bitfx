@@ -26,7 +26,7 @@ type Client struct {
 	currencyCode                                  byte
 }
 
-// New returns a pointer to a new Bitfinex instance
+// New returns a pointer to a Client instance
 func New(key, secret, symbol, currency string, priority int, fee, availShort, availFunds float64) *Client {
 	return &Client{
 		key:          key,
@@ -146,8 +146,8 @@ func (client *Client) getBook() (exchange.Book, []float64) {
 		return exchange.Book{Error: fmt.Errorf("%s UpdateBook error: %s", client, err.Error())}, timestamps
 	}
 
-	// Format returned from the exchange
-	var tmp struct {
+	// Unmarshal
+	var response struct {
 		Bids []struct {
 			Price     float64 `json:"price,string"`
 			Amount    float64 `json:"amount,string"`
@@ -159,7 +159,7 @@ func (client *Client) getBook() (exchange.Book, []float64) {
 			Timestamp float64 `json:"timestamp,string"`
 		} `json:"asks"`
 	}
-	if err := json.Unmarshal(data, &tmp); err != nil {
+	if err := json.Unmarshal(data, &response); err != nil {
 		return exchange.Book{Error: fmt.Errorf("%s UpdateBook error: %s", client, err.Error())}, timestamps
 	}
 
@@ -167,12 +167,12 @@ func (client *Client) getBook() (exchange.Book, []float64) {
 	bids := make(exchange.BidItems, 20)
 	asks := make(exchange.AskItems, 20)
 	for i := 0; i < 20; i++ {
-		bids[i].Price = tmp.Bids[i].Price
-		bids[i].Amount = tmp.Bids[i].Amount
-		asks[i].Price = tmp.Asks[i].Price
-		asks[i].Amount = tmp.Asks[i].Amount
-		timestamps[i] = tmp.Bids[i].Timestamp
-		timestamps[i+20] = tmp.Asks[i].Timestamp
+		bids[i].Price = response.Bids[i].Price
+		bids[i].Amount = response.Bids[i].Amount
+		asks[i].Price = response.Asks[i].Price
+		asks[i].Amount = response.Asks[i].Amount
+		timestamps[i] = response.Bids[i].Timestamp
+		timestamps[i+20] = response.Asks[i].Timestamp
 	}
 	sort.Sort(bids)
 	sort.Sort(asks)
