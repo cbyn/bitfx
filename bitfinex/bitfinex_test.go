@@ -10,6 +10,11 @@ import (
 	"testing"
 )
 
+var (
+	book   exchange.Book
+	client = New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), "ltc", "usd", 2, 0.001, 2, .1)
+)
+
 // Returns a mock HTTP server
 func testServer(code int, body string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,55 +49,74 @@ func TestGetBook(t *testing.T) {
 }
 
 func TestPriority(t *testing.T) {
-	client := Client{priority: 2}
 	if client.Priority() != 2 {
 		t.Fatal("Priority should be 2")
 	}
 }
 
 func TestFee(t *testing.T) {
-	client := Client{fee: 0.002}
-	if notEqual(client.Fee(), 0.002) {
+	if notEqual(client.Fee(), 0.001) {
 		t.Fatal("Fee should be 0.002")
 	}
 }
 
 func TestUpdatePositon(t *testing.T) {
-	client := Client{position: 0}
 	if notEqual(client.Position(), 0) {
 		t.Fatal("Should start with zero position")
 	}
 	client.SetPosition(10)
-	t.Logf("Set position to 10")
 	if notEqual(client.Position(), 10) {
 		t.Fatal("Position should have updated to 10")
 	}
 }
 
+func TestCurrency(t *testing.T) {
+	if client.Currency() != "usd" {
+		t.Fatal("Currency should be usd")
+	}
+}
+
 func TestCurrencyCode(t *testing.T) {
-	client := Client{currencyCode: 1}
-	if client.CurrencyCode() != 1 {
-		t.Fatal("Currency code should be 1")
+	if client.CurrencyCode() != 0 {
+		t.Fatal("Currency code should be 0")
 	}
 }
 
 func TestMaxPos(t *testing.T) {
-	client := Client{maxPos: 100}
-	if notEqual(client.MaxPos(), 100) {
-		t.Fatal("MaxPos should be 100")
+	if notEqual(client.MaxPos(), 0) {
+		t.Fatal("MaxPos should start at 0")
+	}
+	client.SetMaxPos(23)
+	if notEqual(client.MaxPos(), 23) {
+		t.Fatal("MaxPos should be set to 23")
+	}
+}
+
+func TestAvailFunds(t *testing.T) {
+	if notEqual(client.AvailFunds(), 0.1) {
+		t.Fatal("Available funds should be 0.1")
+	}
+}
+
+func TestAvailShort(t *testing.T) {
+	if notEqual(client.AvailShort(), 2) {
+		t.Fatal("Available short should be 2")
+	}
+}
+
+func TestHasCryptoFee(t *testing.T) {
+	if client.HasCryptoFee() {
+		t.Fatal("Should not have cryptocurrency fee")
 	}
 }
 
 // ***** Live exchange communication tests *****
 // Slow... skip when not needed
 
-var book exchange.Book
-var bf = New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), "ltc", "usd", 2, 0.001, .1, 2)
-
 func TestCommunicateBook(t *testing.T) {
 	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
-	if book = bf.CommunicateBook(bookChan, doneChan); book.Error != nil {
+	if book = client.CommunicateBook(bookChan, doneChan); book.Error != nil {
 		t.Fatal(book.Error)
 	}
 
@@ -118,14 +142,14 @@ func TestNewOrder(t *testing.T) {
 	price := book.Asks[0].Price + 0.10
 
 	// Test submitting a new order
-	id, err := bf.SendOrder(action, otype, amount, price)
+	id, err := client.SendOrder(action, otype, amount, price)
 	if err != nil || id == 0 {
 		t.Fatal(err)
 	}
 	t.Logf("Placed a new sell order of 0.1 ltcusd @ %v limit with ID: %d", price, id)
 
 	// Check status
-	order, err := bf.GetOrderStatus(id)
+	order, err := client.GetOrderStatus(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +163,7 @@ func TestNewOrder(t *testing.T) {
 	t.Logf("Order confirmed unfilled")
 
 	// Test cancelling the order
-	success, err := bf.CancelOrder(id)
+	success, err := client.CancelOrder(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +176,7 @@ func TestNewOrder(t *testing.T) {
 	tryAgain := true
 	for tryAgain {
 		t.Logf("checking status...")
-		order, err = bf.GetOrderStatus(id)
+		order, err = client.GetOrderStatus(id)
 		tryAgain = order.Status == ""
 	}
 	if err != nil {
@@ -168,7 +192,7 @@ func TestNewOrder(t *testing.T) {
 	t.Logf("Order confirmed unfilled")
 
 	// Test bad order
-	id, err = bf.SendOrder("kill", otype, amount, price)
+	id, err = client.SendOrder("kill", otype, amount, price)
 	if id != 0 {
 		t.Fatal("Expected id = 0")
 	}
