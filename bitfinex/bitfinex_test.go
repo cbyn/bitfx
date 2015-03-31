@@ -56,7 +56,7 @@ func TestPriority(t *testing.T) {
 
 func TestFee(t *testing.T) {
 	if notEqual(client.Fee(), 0.001) {
-		t.Fatal("Fee should be 0.002")
+		t.Fatal("Fee should be 0.001")
 	}
 }
 
