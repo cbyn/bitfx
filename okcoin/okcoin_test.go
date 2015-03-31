@@ -1,57 +1,96 @@
 package okcoin
 
 import (
-	// "github.com/davecgh/go-spew/spew"
 	"bitfx2/exchange"
 	"math"
 	"os"
 	"testing"
 )
 
-var book exchange.Book
-var ok = New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), "ltc", "usd", 1, 0.002, .1, 2)
+var (
+	book   exchange.Book
+	client = New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), "ltc", "usd", 1, 0.002, 2, .1)
+)
+
+// Used for float equality
+func notEqual(f1, f2 float64) bool {
+	if math.Abs(f1-f2) > 0.000001 {
+		return true
+	}
+	return false
+}
 
 func TestPriority(t *testing.T) {
-	if ok.Priority() != 1 {
+	if client.Priority() != 1 {
 		t.Fatal("Priority should be 1")
 	}
 }
 
 func TestFee(t *testing.T) {
-	if ok.Fee()-0.002 > 0.000001 {
+	if notEqual(client.Fee(), 0.002) {
 		t.Fatal("Fee should be 0.002")
 	}
 }
 
 func TestUpdatePositon(t *testing.T) {
-	if ok.Position() != 0 {
+	if notEqual(client.Position(), 0) {
 		t.Fatal("Should start with zero position")
 	}
-	ok.SetPosition(10)
-	t.Logf("Set position to 10")
-	if ok.Position() != 10 {
+	client.SetPosition(10)
+	if notEqual(client.Position(), 10) {
 		t.Fatal("Position should have updated to 10")
 	}
 }
 
-func TestMaxPos(t *testing.T) {
-	if math.Abs(ok.MaxPos()) > .000001 {
-		t.Fatal("MaxPos should be 0")
+func TestCurrency(t *testing.T) {
+	if client.Currency() != "usd" {
+		t.Fatal("Currency should be usd")
 	}
 }
 
-// USD tesing ******************************************************************
-
-func TestCurrencyCodeUSD(t *testing.T) {
-	if ok.CurrencyCode() != 0 {
+func TestCurrencyCode(t *testing.T) {
+	if client.CurrencyCode() != 0 {
 		t.Fatal("Currency code should be 0")
 	}
 }
 
+func TestMaxPos(t *testing.T) {
+	if notEqual(client.MaxPos(), 0) {
+		t.Fatal("MaxPos should start at 0")
+	}
+	client.SetMaxPos(23)
+	if notEqual(client.MaxPos(), 23) {
+		t.Fatal("MaxPos should be set to 23")
+	}
+}
+
+func TestAvailFunds(t *testing.T) {
+	if notEqual(client.AvailFunds(), 0.1) {
+		t.Fatal("Available funds should be 0.1")
+	}
+}
+
+func TestAvailShort(t *testing.T) {
+	if notEqual(client.AvailShort(), 2) {
+		t.Fatal("Available short should be 2")
+	}
+}
+
+func TestHasCryptoFee(t *testing.T) {
+	if !client.HasCryptoFee() {
+		t.Fatal("Should have cryptocurrency fee")
+	}
+}
+
+// ***** Live exchange communication tests *****
+// Slow... skip when not needed
+
+// USD tesing
+
 func TestCommunicateBookUSD(t *testing.T) {
 	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
-	if book = ok.CommunicateBook(bookChan, doneChan); book.Error != nil {
+	if book = client.CommunicateBook(bookChan, doneChan); book.Error != nil {
 		t.Fatal(book.Error)
 	}
 
@@ -77,14 +116,14 @@ func TestNewOrderUSD(t *testing.T) {
 	price := book.Bids[0].Price - 0.20
 
 	// Test submitting a new order
-	id, err := ok.SendOrder(action, otype, amount, price)
+	id, err := client.SendOrder(action, otype, amount, price)
 	if err != nil || id == 0 {
 		t.Fatal(err)
 	}
 	t.Logf("Placed a new buy order of 0.1 ltc_usd @ %v limit with ID: %d", price, id)
 
 	// Check status
-	order, err := ok.GetOrderStatus(id)
+	order, err := client.GetOrderStatus(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +137,7 @@ func TestNewOrderUSD(t *testing.T) {
 	t.Logf("Order confirmed unfilled")
 
 	// Test cancelling the order
-	success, err := ok.CancelOrder(id)
+	success, err := client.CancelOrder(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +150,7 @@ func TestNewOrderUSD(t *testing.T) {
 	tryAgain := true
 	for tryAgain {
 		t.Logf("checking status...")
-		order, err = ok.GetOrderStatus(id)
+		order, err = client.GetOrderStatus(id)
 		tryAgain = order.Status == ""
 	}
 	if err != nil {
@@ -127,7 +166,7 @@ func TestNewOrderUSD(t *testing.T) {
 	t.Logf("Order confirmed unfilled")
 
 	// Test bad order
-	id, err = ok.SendOrder("kill", otype, amount, price)
+	id, err = client.SendOrder("kill", otype, amount, price)
 	if id != 0 {
 		t.Fatal("Expected id = 0")
 	}
@@ -136,14 +175,14 @@ func TestNewOrderUSD(t *testing.T) {
 	}
 }
 
-// CNY tesing ******************************************************************
+// CNY tesing
 
 func TestCurrencyCodeCNY(t *testing.T) {
 	// Reset global variables
 	book = exchange.Book{}
-	ok = New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), "ltc", "cny", 1, 0.002, .1, 2)
+	client = New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), "ltc", "cny", 1, 0.002, 2, .1)
 
-	if ok.CurrencyCode() != 1 {
+	if client.CurrencyCode() != 1 {
 		t.Fatal("Currency code should be 1")
 	}
 }
@@ -151,7 +190,7 @@ func TestCurrencyCodeCNY(t *testing.T) {
 func TestCommunicateBookCNY(t *testing.T) {
 	bookChan := make(chan exchange.Book)
 	doneChan := make(chan bool)
-	if book = ok.CommunicateBook(bookChan, doneChan); book.Error != nil {
+	if book = client.CommunicateBook(bookChan, doneChan); book.Error != nil {
 		t.Fatal(book.Error)
 	}
 
@@ -177,14 +216,14 @@ func TestNewOrderCNY(t *testing.T) {
 	price := book.Bids[0].Price - 1
 
 	// Test submitting a new order
-	id, err := ok.SendOrder(action, otype, amount, price)
+	id, err := client.SendOrder(action, otype, amount, price)
 	if err != nil || id == 0 {
 		t.Fatal(err)
 	}
 	t.Logf("Placed a new buy order of 0.1 ltc_cny @ %v limit with ID: %d", price, id)
 
 	// Check status
-	order, err := ok.GetOrderStatus(id)
+	order, err := client.GetOrderStatus(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +237,7 @@ func TestNewOrderCNY(t *testing.T) {
 	t.Logf("Order confirmed unfilled")
 
 	// Test cancelling the order
-	success, err := ok.CancelOrder(id)
+	success, err := client.CancelOrder(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +250,7 @@ func TestNewOrderCNY(t *testing.T) {
 	tryAgain := true
 	for tryAgain {
 		t.Logf("checking status...")
-		order, err = ok.GetOrderStatus(id)
+		order, err = client.GetOrderStatus(id)
 		tryAgain = order.Status == ""
 	}
 	if err != nil {
@@ -227,7 +266,7 @@ func TestNewOrderCNY(t *testing.T) {
 	t.Logf("Order confirmed unfilled")
 
 	// Test bad order
-	id, err = ok.SendOrder("kill", otype, amount, price)
+	id, err = client.SendOrder("kill", otype, amount, price)
 	if id != 0 {
 		t.Fatal("Expected id = 0")
 	}
