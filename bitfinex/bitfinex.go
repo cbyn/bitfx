@@ -1,4 +1,4 @@
-// Bitfinex trading API
+// Bitfinex exchange API
 
 package bitfinex
 
@@ -40,7 +40,7 @@ func New(key, secret, symbol, currency string, priority int, fee, availShort, av
 		availFunds:   availFunds,
 		currencyCode: 0,
 		name:         fmt.Sprintf("Bitfinex(%s)", currency),
-		baseURL:      "https://api.bitfinex.com/v1/",
+		baseURL:      "https://api.bitfinex.com",
 	}
 }
 
@@ -126,6 +126,7 @@ func (client *Client) runLoop(bookChan chan<- exchange.Book, doneChan <-chan boo
 			return
 		default:
 			book, newTimestamps := client.getBook()
+			// Send out only if changed
 			if bookChanged(oldTimestamps, newTimestamps) {
 				bookChan <- book
 			}
@@ -134,18 +135,19 @@ func (client *Client) runLoop(bookChan chan<- exchange.Book, doneChan <-chan boo
 	}
 }
 
-// Get book data with an http request
+// Get book data with an HTTP request
 func (client *Client) getBook() (exchange.Book, []float64) {
 	// Used to compare timestamps
 	timestamps := make([]float64, 40)
 
-	// Send get request
-	url := fmt.Sprintf("%sbook/%s%s?limit_bids=%d&limit_asks=%d", client.baseURL, client.symbol, client.currency, 20, 20)
+	// Send GET request
+	url := fmt.Sprintf("%s/v1/book/%s%s?limit_bids=%d&limit_asks=%d", client.baseURL, client.symbol, client.currency, 20, 20)
 	data, err := client.get(url)
 	if err != nil {
 		return exchange.Book{Error: fmt.Errorf("%s UpdateBook error: %s", client, err.Error())}, timestamps
 	}
 
+	// Format returned from the exchange
 	var tmp struct {
 		Bids []struct {
 			Price     float64 `json:"price,string"`
@@ -158,11 +160,11 @@ func (client *Client) getBook() (exchange.Book, []float64) {
 			Timestamp float64 `json:"timestamp,string"`
 		} `json:"asks"`
 	}
-
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return exchange.Book{Error: fmt.Errorf("%s UpdateBook error: %s", client, err.Error())}, timestamps
 	}
 
+	// Translate into an exchange.Book
 	bids := make(exchange.BidItems, 20)
 	asks := make(exchange.AskItems, 20)
 	for i := 0; i < 20; i++ {
@@ -173,11 +175,10 @@ func (client *Client) getBook() (exchange.Book, []float64) {
 		timestamps[i] = tmp.Bids[i].Timestamp
 		timestamps[i+20] = tmp.Asks[i].Timestamp
 	}
-
 	sort.Sort(bids)
 	sort.Sort(asks)
 
-	// Return book
+	// Return book and timestamps
 	return exchange.Book{
 		Exg:   client,
 		Time:  time.Now(),
@@ -220,8 +221,8 @@ func (client *Client) SendOrder(action, otype string, amount, price float64) (in
 		otype,
 	}
 
-	// Send post request
-	data, err := client.post(client.baseURL+"order/new", request)
+	// Send POST request
+	data, err := client.post(client.baseURL+request.URL, request)
 	if err != nil {
 		return 0, fmt.Errorf("%s SendOrder error: %s", client, err.Error())
 	}
@@ -255,8 +256,8 @@ func (client *Client) CancelOrder(id int64) (bool, error) {
 		id,
 	}
 
-	// Send post request
-	data, err := client.post(client.baseURL+"order/cancel", request)
+	// Send POST request
+	data, err := client.post(client.baseURL+request.URL, request)
 	if err != nil {
 		return false, fmt.Errorf("%s CancelOrder error: %s", client, err.Error())
 	}
@@ -292,8 +293,8 @@ func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
 	// Create order to be returned
 	var order exchange.Order
 
-	// Send post request
-	data, err := client.post(client.baseURL+"order/status", request)
+	// Send POST request
+	data, err := client.post(client.baseURL+request.URL, request)
 	if err != nil {
 		return order, fmt.Errorf("%s GetOrderStatus error: %s", client, err.Error())
 	}
@@ -336,7 +337,6 @@ func (client *Client) post(url string, payload interface{}) ([]byte, error) {
 	signature := hex.EncodeToString(h.Sum(nil))
 
 	req, err := http.NewRequest("POST", url, nil)
-	// req.Close = true
 	if err != nil {
 		return []byte{}, err
 	}
@@ -359,16 +359,16 @@ func (client *Client) post(url string, payload interface{}) ([]byte, error) {
 	return ioutil.ReadAll(resp.Body)
 }
 
-// Unauthenticated get
+// Unauthenticated GET
 func (client *Client) get(url string) ([]byte, error) {
 	resp, err := http.Get(url)
-	defer resp.Body.Close()
 	if err != nil {
 		return []byte{}, err
 	}
 	if resp.StatusCode != 200 {
 		return []byte{}, fmt.Errorf(resp.Status)
 	}
+	defer resp.Body.Close()
 
 	return ioutil.ReadAll(resp.Body)
 }
