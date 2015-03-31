@@ -1,7 +1,7 @@
 package bitfinex
 
 import (
-	"bitfx2/exchange"
+	"bitfx/exchange"
 	"fmt"
 	"math"
 	"net/http"

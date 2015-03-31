@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bitfx2/exchange"
-	"bitfx2/forex"
-	"bitfx2/okcoin"
+	"bitfx/exchange"
+	"bitfx/forex"
+	"bitfx/okcoin"
 	"fmt"
 	"log"
 	"os"

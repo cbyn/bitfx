@@ -1,10 +1,9 @@
 package main
 
 import (
-	"bitfx2/bitfinex"
-	"bitfx2/exchange"
-	"bitfx2/okcoin"
-	// "github.com/davecgh/go-spew/spew"
+	"bitfx/bitfinex"
+	"bitfx/exchange"
+	"bitfx/okcoin"
 	"math"
 	"testing"
 )

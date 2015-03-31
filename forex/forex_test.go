@@ -1,7 +1,6 @@
 package forex
 
 import (
-	// "github.com/davecgh/go-spew/spew"
 	"testing"
 )
 

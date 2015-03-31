@@ -3,7 +3,7 @@
 package okcoin
 
 import (
-	"bitfx2/exchange"
+	"bitfx/exchange"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"

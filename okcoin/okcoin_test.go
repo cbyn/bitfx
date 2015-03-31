@@ -1,7 +1,7 @@
 package okcoin
 
 import (
-	"bitfx2/exchange"
+	"bitfx/exchange"
 	"math"
 	"os"
 	"testing"

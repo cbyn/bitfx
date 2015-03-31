@@ -3,7 +3,7 @@
 package bitfinex
 
 import (
-	"bitfx2/exchange"
+	"bitfx/exchange"
 	"crypto/hmac"
 	"crypto/sha512"
 	"encoding/base64"

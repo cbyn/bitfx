@@ -12,10 +12,10 @@
 package main
 
 import (
-	"bitfx2/bitfinex"
-	"bitfx2/exchange"
-	"bitfx2/forex"
-	"bitfx2/okcoin"
+	"bitfx/bitfinex"
+	"bitfx/exchange"
+	"bitfx/forex"
+	"bitfx/okcoin"
 	"encoding/csv"
 	"flag"
 	"fmt"

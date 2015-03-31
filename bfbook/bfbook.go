@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bitfx2/bitfinex"
-	"bitfx2/exchange"
+	"bitfx/bitfinex"
+	"bitfx/exchange"
 	"fmt"
 	"log"
 	"os"
