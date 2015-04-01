@@ -1,5 +1,5 @@
 // Forex data API
-
+// Currently using yahoo finance
 // http://finance.yahoo.com/webservice/v1/symbols/CNY=X/quote?format=json
 
 package forex
@@ -13,11 +13,9 @@ import (
 )
 
 // Forex data API URL
-const (
-	DATAURL = "http://finance.yahoo.com/webservice/v1/symbols/"
-)
+const DATAURL = "http://finance.yahoo.com/webservice/v1/symbols/"
 
-// Quote forex info
+// Quote contains forex quote information
 type Quote struct {
 	Price  float64
 	Symbol string
@@ -50,9 +48,17 @@ func runLoop(symbol string, fxChan chan<- Quote, doneChan <-chan bool) {
 	}
 }
 
-// Returns quote for requested instrument
+// Returns quote for requested currency
 func getQuote(symbol string) Quote {
-	tmp := struct {
+	// Get data
+	url := fmt.Sprintf("%s%s=x/quote?format=json", DATAURL, symbol)
+	data, err := get(url)
+	if err != nil {
+		return Quote{Error: fmt.Errorf("Forex error %s", err)}
+	}
+
+	// Unmarshal
+	response := struct {
 		List struct {
 			Resources []struct {
 				Resource struct {
@@ -63,19 +69,12 @@ func getQuote(symbol string) Quote {
 			} `json:"resources"`
 		} `json:"list"`
 	}{}
-
-	url := fmt.Sprintf("%s=x/quote?format=json", symbol)
-
-	data, err := get(url)
-	if err != nil {
+	if err = json.Unmarshal(data, &response); err != nil {
 		return Quote{Error: fmt.Errorf("Forex error %s", err)}
 	}
 
-	if err = json.Unmarshal(data, &tmp); err != nil {
-		return Quote{Error: fmt.Errorf("Forex error %s", err)}
-	}
-
-	price := tmp.List.Resources[0].Resource.Fields.Price
+	// Pull out price
+	price := response.List.Resources[0].Resource.Fields.Price
 	if price < .000001 {
 		return Quote{Error: fmt.Errorf("Forex zero price error")}
 	}
@@ -87,11 +86,14 @@ func getQuote(symbol string) Quote {
 	}
 }
 
-// unauthenticated GET
+// Unauthenticated GET
 func get(url string) ([]byte, error) {
-	resp, err := http.Get(DATAURL + url)
+	resp, err := http.Get(url)
 	if err != nil {
 		return []byte{}, err
+	}
+	if resp.StatusCode != 200 {
+		return []byte{}, fmt.Errorf(resp.Status)
 	}
 	defer resp.Body.Close()
 
