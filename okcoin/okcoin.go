@@ -413,10 +413,13 @@ func (client *Client) post(stringrestURL string, params map[string]string) ([]by
 	// Add sign to url.Values
 	values.Set("sign", strings.ToUpper(fmt.Sprintf("%x", sum)))
 
-	// Send post request
+	// Send POST
 	resp, err := http.PostForm(stringrestURL, values)
 	if err != nil {
 		return []byte{}, err
+	}
+	if resp.StatusCode != 200 {
+		return []byte{}, fmt.Errorf(resp.Status)
 	}
 	defer resp.Body.Close()
 

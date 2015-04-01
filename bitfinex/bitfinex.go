@@ -348,10 +348,14 @@ func (client *Client) post(url string, payload interface{}) ([]byte, error) {
 	req.Header.Add("X-BFX-PAYLOAD", payloadBase64)
 	req.Header.Add("X-BFX-SIGNATURE", signature)
 
+	// Send POST
 	httpClient := http.Client{}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return []byte{}, err
+	}
+	if resp.StatusCode != 200 {
+		return []byte{}, fmt.Errorf(resp.Status)
 	}
 	defer resp.Body.Close()
 
