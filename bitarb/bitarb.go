@@ -1,10 +1,8 @@
 // Cryptocurrency arbitrage trading system
 
 // TODO:
-// Set maxPos relative to price?
-// - maxShort = maxPos, maxBuyPower = available currency
 // Quit bitarb on repeated errors?
-// Use yahoo and openexchange for FX?
+// Backup FX data source
 // Use arb logic for best bid and ask?
 // Use websocket for orders
 // Auto margining on okcoin
