@@ -8,21 +8,43 @@ import (
 
 // Exchange methods for data and trading ***************************************
 type Exchange interface {
+	// Implement Stringer interface
 	String() string
+	// Return exchange priority for order execution
+	// Lower priority number is executed first
+	// Equal priority results in concurrent execution
 	Priority() int
+	// Return percent fee charged for taking a market
 	Fee() float64
+	// Position setter method
 	SetPosition(float64)
+	// Return position set above
 	Position() float64
+	// Max allowed position setter method
 	SetMaxPos(float64)
+	// Return max allowed position set above
 	MaxPos() float64
+	// Return fiat currency funds available for purchases
 	AvailFunds() float64
+	// Return amount of cryptocurrency available for short selling
 	AvailShort() float64
+	// Return the fiat currency in use
 	Currency() string
+	// Return the fiat currency code
+	// USD = 0
+	// CNY = 1
 	CurrencyCode() byte
+	// Send the latest availble exchange.Book on the supplied channel
 	CommunicateBook(bookChan chan<- Book, doneChan <-chan bool) Book
+	// Send an order to the exchange
+	// action = "buy" or "sell"
+	// otype = "limit" or "market"
 	SendOrder(action, otype string, amount, price float64) (int64, error)
+	// Cancel an existing order on the exchange
 	CancelOrder(id int64) (bool, error)
+	// Return status of an existing order on the exchange
 	GetOrderStatus(id int64) (Order, error)
+	// Return true if fees are charged in cryptocurrency on purchases
 	HasCryptoFee() bool
 }
 
