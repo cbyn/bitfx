@@ -1,3 +1,5 @@
+// Tester program for displaying Bitfinex book data to terminal
+
 package main
 
 import (
@@ -9,7 +11,7 @@ import (
 	"os/exec"
 )
 
-var bf = bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), "ltc", "usd", 2, 0.001, 1, 2)
+var bf = bitfinex.New("", "", "ltc", "usd", 0, 0, 0, 0)
 
 func main() {
 	filename := "bfbook.log"
