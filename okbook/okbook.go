@@ -1,3 +1,5 @@
+// Tester program for displaying OKCoin book data to terminal
+
 package main
 
 import (
@@ -11,7 +13,7 @@ import (
 )
 
 var (
-	ok  = okcoin.New("", "", "ltc", "cny", 1, 0.002, 1, 2)
+	ok  = okcoin.New("", "", "ltc", "cny", 0, 0, 0, 0)
 	cny float64
 )
 
