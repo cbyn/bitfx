@@ -26,7 +26,7 @@ func main() {
 	log.SetOutput(logFile)
 	log.Println("Starting new run")
 	fxChan := make(chan forex.Quote)
-	fxDoneChan := make(chan bool)
+	fxDoneChan := make(chan bool, 1)
 	quote := forex.CommunicateFX("cny", fxChan, fxDoneChan)
 	if quote.Error != nil || quote.Price == 0 {
 		log.Fatal(quote.Error)
