@@ -261,7 +261,13 @@ func handleFX(requestFX <-chan string, receiveFX chan<- float64, doneChan <-chan
 // Filter book down to relevant data for trading decisions
 // Adjusts market amounts according to MaxOrder
 func filterBook(book exchange.Book, fxPrice float64) filteredBook {
-	fb := filteredBook{time: book.Time}
+	// Default with a high ask.adjPrice in case sufficient size doesn't exist
+	fb := filteredBook{
+		time: book.Time,
+		bid:  market{exg: book.Exg},
+		ask:  market{exg: book.Exg, adjPrice: math.MaxFloat64},
+	}
+
 	// Loop through bids and aggregate amounts until required size
 	var amount, aggPrice float64
 	for _, bid := range book.Bids {
