@@ -4,6 +4,7 @@ package btcchina
 
 import (
 	"bitfx/exchange"
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/json"
@@ -324,20 +325,25 @@ func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
 }
 
 // Authenticated POST
-func (client *Client) post(payload string, tonce int64) ([]byte, error) {
-	// Perform HMAC on payload using secret
+func (client *Client) post(method, params string, payload []byte) ([]byte, error) {
+	// Create signature to be signed
+	tonce := strconv.FormatInt(time.Now().UnixNano(), 10)
+	signature := fmt.Sprintf("tonce=%s&accesskey=%s&requestmethod=post&id=%s&method=%s&params=%s",
+		tonce, client.key, tonce, method, params)
+
+	// Perform HMAC on signature using client.secret
 	h := hmac.New(sha1.New, []byte(client.secret))
-	h.Write([]byte(payload))
+	h.Write([]byte(signature))
 
 	// Create http request using specified url
 	url := fmt.Sprintf("https://%s:%x@%s", client.key, h.Sum(nil), client.restURL)
-	req, err := http.NewRequest("POST", url, nil)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
 		return []byte{}, err
 	}
 
 	// Add tonce header
-	req.Header.Add("Json-Rpc-Tonce", strconv.FormatInt(tonce, 10))
+	req.Header.Add("Json-Rpc-Tonce", tonce)
 
 	// Send POST
 	httpClient := http.Client{}
