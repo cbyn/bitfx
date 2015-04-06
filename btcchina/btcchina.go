@@ -4,15 +4,15 @@ package btcchina
 
 import (
 	"bitfx/exchange"
-	"crypto/md5"
+	"crypto/hmac"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"math"
 	"net/http"
-	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,7 +42,7 @@ func New(key, secret, symbol, currency string, priority int, fee, availShort, av
 		symbol:       symbol,
 		currency:     currency,
 		websocketURL: "websocket.btcchina.com/socket.io",
-		restURL:      "api.btcchina.com",
+		restURL:      "api.btcchina.com/api_trade_v1.php",
 		priority:     priority,
 		fee:          fee,
 		availShort:   availShort,
@@ -310,129 +310,38 @@ func (client *Client) convertToBook(data []byte) exchange.Book {
 
 // SendOrder sends an order to the exchange
 func (client *Client) SendOrder(action, otype string, amount, price float64) (int64, error) {
-	// Create parameter map for signing
-	params := make(map[string]string)
-	params["symbol"] = fmt.Sprintf("%s_%s", client.symbol, client.currency)
-	if otype == "limit" {
-		params["type"] = action
-	} else if otype == "market" {
-		params["type"] = fmt.Sprintf("%s_%s", action, otype)
-	}
-	params["price"] = fmt.Sprintf("%f", price)
-	params["amount"] = fmt.Sprintf("%f", amount)
-
-	// Send POST request
-	data, err := client.post(client.restURL+"/trade.do", params)
-	if err != nil {
-		return 0, fmt.Errorf("%s SendOrder error: %s", client, err)
-	}
-
-	// Unmarshal response
-	var response struct {
-		ID        int64 `json:"order_id"`
-		ErrorCode int64 `json:"error_code"`
-	}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return 0, fmt.Errorf("%s SendOrder error: %s", client, err)
-	}
-	if response.ErrorCode != 0 {
-		return 0, fmt.Errorf("%s SendOrder error code: %d", client, response.ErrorCode)
-	}
-
-	return response.ID, nil
+	return 0, nil
 }
 
 // CancelOrder cancels an order on the exchange
 func (client *Client) CancelOrder(id int64) (bool, error) {
-	// Create parameter map for signing
-	params := make(map[string]string)
-	params["symbol"] = fmt.Sprintf("%s_%s", client.symbol, client.currency)
-	params["order_id"] = fmt.Sprintf("%d", id)
-
-	// Send POST request
-	data, err := client.post(client.restURL+"/cancel_order.do", params)
-	if err != nil {
-		return false, fmt.Errorf("%s CancelOrder error: %s", client, err)
-	}
-
-	// Unmarshal response
-	var response struct {
-		Result    bool  `json:"result"`
-		ErrorCode int64 `json:"error_code"`
-	}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return false, fmt.Errorf("%s CancelOrder error: %s", client, err)
-	}
-	if response.ErrorCode != 0 {
-		return false, fmt.Errorf("%s CancelOrder error code: %d", client, response.ErrorCode)
-	}
-
-	return response.Result, nil
+	return true, nil
 }
 
 // GetOrderStatus gets the status of an order on the exchange
 func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
-	// Create parameter map for signing
-	params := make(map[string]string)
-	params["symbol"] = fmt.Sprintf("%s_%s", client.symbol, client.currency)
-	params["order_id"] = fmt.Sprintf("%d", id)
-
-	// Create order to be returned
-	var order exchange.Order
-
-	// Send POST request
-	data, err := client.post(client.restURL+"/order_info.do", params)
-	if err != nil {
-		return order, fmt.Errorf("%s GetOrderStatus error: %s", client, err)
-	}
-
-	// Unmarshal response
-	var response struct {
-		Orders []struct {
-			Status     int     `json:"status"`
-			DealAmount float64 `json:"deal_amount"`
-		} `json:"orders"`
-		ErrorCode int64 `json:"error_code"`
-	}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return order, fmt.Errorf("%s GetOrderStatus error: %s", client, err)
-	}
-	if response.ErrorCode != 0 {
-		return order, fmt.Errorf("%s GetOrderStatus error code: %d", client, response.ErrorCode)
-	}
-
-	if response.Orders[0].Status == -1 || response.Orders[0].Status == 2 {
-		order.Status = "dead"
-	} else if response.Orders[0].Status == 4 || response.Orders[0].Status == 5 {
-		order.Status = ""
-	} else {
-		order.Status = "live"
-	}
-	order.FilledAmount = math.Abs(response.Orders[0].DealAmount)
-	return order, nil
-
+	return exchange.Order{}, nil
 }
 
 // Authenticated POST
-func (client *Client) post(stringrestURL string, params map[string]string) ([]byte, error) {
-	// Make url.Values from params
-	values := url.Values{}
-	for param, value := range params {
-		values.Set(param, value)
+func (client *Client) post(payload string, tonce int64) ([]byte, error) {
+	// Perform HMAC on payload using secret
+	h := hmac.New(sha1.New, []byte(client.secret))
+	h.Write([]byte(payload))
+
+	// Create http request using specified url
+	url := fmt.Sprintf("https://%s:%x@%s", client.key, h.Sum(nil), client.restURL)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return []byte{}, err
 	}
-	// Add authorization key to url.Values
-	values.Set("api_key", client.key)
-	// Prepare string to sign with MD5
-	stringParams := values.Encode()
-	// Add the authorization secret to the end
-	stringParams += fmt.Sprintf("&secret_key=%s", client.secret)
-	// Sign with MD5
-	sum := md5.Sum([]byte(stringParams))
-	// Add sign to url.Values
-	values.Set("sign", strings.ToUpper(fmt.Sprintf("%x", sum)))
+
+	// Add tonce header
+	req.Header.Add("Json-Rpc-Tonce", strconv.FormatInt(tonce, 10))
 
 	// Send POST
-	resp, err := http.PostForm(stringrestURL, values)
+	httpClient := http.Client{}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -442,5 +351,4 @@ func (client *Client) post(stringrestURL string, params map[string]string) ([]by
 	defer resp.Body.Close()
 
 	return ioutil.ReadAll(resp.Body)
-
 }
