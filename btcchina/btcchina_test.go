@@ -3,12 +3,13 @@ package btcchina
 import (
 	"bitfx/exchange"
 	"math"
+	"os"
 	"testing"
 )
 
 var (
 	book   exchange.Book
-	client = New("", "", "btc", "cny", 1, 0.002, 2, .1)
+	client = New(os.Getenv("BTC_KEY"), os.Getenv("BTC_SECRET"), "btc", "cny", 1, 0.002, 2, .1)
 )
 
 // Used for float equality
@@ -107,64 +108,63 @@ func TestCommunicateBook(t *testing.T) {
 }
 
 func TestNewOrder(t *testing.T) {
-	t.Skip()
 	action := "buy"
 	otype := "limit"
-	amount := 0.1
-	price := book.Bids[0].Price - 0.20
+	amount := 0.0001
+	price := book.Bids[0].Price - 10
 
 	// Test submitting a new order
 	id, err := client.SendOrder(action, otype, amount, price)
 	if err != nil || id == 0 {
 		t.Fatal(err)
 	}
-	t.Logf("Placed a new buy order of 0.1 ltc_usd @ %v limit with ID: %d", price, id)
+	t.Logf("Placed a new buy order of 0.0001 btc_usd @ %v limit with ID: %d", price, id)
 
-	// Check status
-	order, err := client.GetOrderStatus(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if order.Status != "live" {
-		t.Fatal("Order should be live")
-	}
-	t.Logf("Order confirmed live")
-	if order.FilledAmount != 0 {
-		t.Fatal("Order should not be filled")
-	}
-	t.Logf("Order confirmed unfilled")
+	// // Check status
+	// order, err := client.GetOrderStatus(id)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// if order.Status != "live" {
+	// 	t.Fatal("Order should be live")
+	// }
+	// t.Logf("Order confirmed live")
+	// if order.FilledAmount != 0 {
+	// 	t.Fatal("Order should not be filled")
+	// }
+	// t.Logf("Order confirmed unfilled")
 
-	// Test cancelling the order
-	success, err := client.CancelOrder(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !success {
-		t.Fatal("Order not cancelled")
-	}
-	t.Logf("Sent cancellation")
+	// // Test cancelling the order
+	// success, err := client.CancelOrder(id)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// if !success {
+	// 	t.Fatal("Order not cancelled")
+	// }
+	// t.Logf("Sent cancellation")
 
-	// Check status
-	tryAgain := true
-	for tryAgain {
-		t.Logf("checking status...")
-		order, err = client.GetOrderStatus(id)
-		tryAgain = order.Status == ""
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if order.Status != "dead" {
-		t.Fatal("Order should be dead after cancel")
-	}
-	t.Logf("Order confirmed dead")
-	if order.FilledAmount != 0 {
-		t.Fatal("Order should not be filled")
-	}
-	t.Logf("Order confirmed unfilled")
+	// // Check status
+	// tryAgain := true
+	// for tryAgain {
+	// 	t.Logf("checking status...")
+	// 	order, err = client.GetOrderStatus(id)
+	// 	tryAgain = order.Status == ""
+	// }
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// if order.Status != "dead" {
+	// 	t.Fatal("Order should be dead after cancel")
+	// }
+	// t.Logf("Order confirmed dead")
+	// if order.FilledAmount != 0 {
+	// 	t.Fatal("Order should not be filled")
+	// }
+	// t.Logf("Order confirmed unfilled")
 
 	// Test bad order
-	id, err = client.SendOrder("kill", otype, amount, price)
+	id, err = client.SendOrder("buy", otype, 0, price)
 	if id != 0 {
 		t.Fatal("Expected id = 0")
 	}

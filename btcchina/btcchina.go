@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/websocket"
 )
 
@@ -311,7 +312,58 @@ func (client *Client) convertToBook(data []byte) exchange.Book {
 
 // SendOrder sends an order to the exchange
 func (client *Client) SendOrder(action, otype string, amount, price float64) (int64, error) {
-	return 0, nil
+	// Set method
+	var method string
+	if action == "buy" {
+		method = "buyOrder2"
+	} else if action == "sell" {
+		method = "sellOrder2"
+	} else {
+		return 0, fmt.Errorf("%s SendOrder error: only \"buy\" and \"sell\" actions supported", client)
+	}
+
+	// Check order type
+	if otype != "limit" {
+		return 0, fmt.Errorf("%s SendOrder error: only limit orders supported", client)
+	}
+
+	// Set params
+	symbol := strings.ToUpper(client.symbol + client.currency)
+	params := []string{strconv.FormatFloat(price, 'f', 2, 64), strconv.FormatFloat(amount, 'f', 4, 64), symbol}
+
+	// Create request struct
+	request := struct {
+		Method string   `json:"method"`
+		Params []string `json:"params"`
+		ID     int      `json:"id"`
+	}{
+		method,
+		params,
+		1,
+	}
+	// Send POST
+	data, err := client.post(method, strings.Join(params, ","), request)
+	if err != nil {
+		return 0, fmt.Errorf("%s SendOrder error: %s", client, err)
+	}
+
+	// Unmarshal
+	var response struct {
+		Result int64
+		Error  struct {
+			Code    int
+			Message string
+		}
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		return 0, fmt.Errorf("%s SendOrder error: %s", client, err)
+	}
+	spew.Dump(response)
+	if response.Error.Message != "" {
+		return 0, fmt.Errorf("%s SendOrder error code %d: %s", client, response.Error.Code, response.Error.Message)
+	}
+
+	return response.Result, nil
 }
 
 // CancelOrder cancels an order on the exchange
@@ -325,19 +377,23 @@ func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
 }
 
 // Authenticated POST
-func (client *Client) post(method, params string, payload []byte) ([]byte, error) {
+func (client *Client) post(method, params string, payload interface{}) ([]byte, error) {
 	// Create signature to be signed
-	tonce := strconv.FormatInt(time.Now().UnixNano(), 10)
-	signature := fmt.Sprintf("tonce=%s&accesskey=%s&requestmethod=post&id=%s&method=%s&params=%s",
-		tonce, client.key, tonce, method, params)
-
+	tonce := strconv.FormatInt(time.Now().UnixNano()/1000, 10)
+	signature := fmt.Sprintf("tonce=%s&accesskey=%s&requestmethod=post&id=1&method=%s&params=%s",
+		tonce, client.key, method, params)
 	// Perform HMAC on signature using client.secret
 	h := hmac.New(sha1.New, []byte(client.secret))
 	h.Write([]byte(signature))
 
+	// Marshal payload
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return []byte{}, err
+	}
 	// Create http request using specified url
 	url := fmt.Sprintf("https://%s:%x@%s", client.key, h.Sum(nil), client.restURL)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	if err != nil {
 		return []byte{}, err
 	}
