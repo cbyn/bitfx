@@ -425,7 +425,7 @@ func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
 		return exchange.Order{}, fmt.Errorf("%s CancelOrder error code %d: %s", client, response.Error.Code, response.Error.Message)
 	}
 
-	// Status from exchange can be "pending", "open", "cancelled", or "closed" (partial fill?)
+	// Status from exchange can be "pending", "open", "cancelled", or "closed"
 	var status string
 	if response.Result.Order.Status == "cancelled" || response.Result.Order.Status == "closed" {
 		status = "dead"
@@ -433,7 +433,7 @@ func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
 		status = "live"
 	} // else empty string is returned
 
-	// Calculate filled amount (negative number for sell orders?)
+	// Calculate filled amount (positive number is returned for buys and sells)
 	filled := response.Result.Order.OrigAmount - response.Result.Order.Amount
 
 	return exchange.Order{FilledAmount: filled, Status: status}, nil
