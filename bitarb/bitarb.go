@@ -525,7 +525,7 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 		} else if order.Status == "dead" {
 			break
 		}
-		// Continues while order status is non-empty
+		// Continues while order status is empty
 	}
 
 	filledAmount := order.FilledAmount
