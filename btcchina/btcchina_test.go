@@ -120,48 +120,51 @@ func TestNewOrder(t *testing.T) {
 	}
 	t.Logf("Placed a new buy order of 0.0001 btc_usd @ %v limit with ID: %d", price, id)
 
-	// // Check status
-	// order, err := client.GetOrderStatus(id)
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// if order.Status != "live" {
-	// 	t.Fatal("Order should be live")
-	// }
-	// t.Logf("Order confirmed live")
-	// if order.FilledAmount != 0 {
-	// 	t.Fatal("Order should not be filled")
-	// }
-	// t.Logf("Order confirmed unfilled")
+	// Check status
+	var order exchange.Order
+	tryAgain := true
+	for tryAgain {
+		t.Logf("checking status...")
+		order, err = client.GetOrderStatus(id)
+		tryAgain = order.Status == ""
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.Status != "live" {
+		t.Fatal("Order should be live")
+	}
+	t.Logf("Order confirmed live")
+	if order.FilledAmount != 0 {
+		t.Fatal("Order should not be filled")
+	}
+	t.Logf("Order confirmed unfilled")
 
-	// // Test cancelling the order
-	// success, err := client.CancelOrder(id)
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// if !success {
-	// 	t.Fatal("Order not cancelled")
-	// }
-	// t.Logf("Sent cancellation")
+	// Test cancelling the order
+	success, err := client.CancelOrder(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !success {
+		t.Fatal("Order not cancelled")
+	}
+	t.Logf("Sent cancellation")
 
-	// // Check status
-	// tryAgain := true
-	// for tryAgain {
-	// 	t.Logf("checking status...")
-	// 	order, err = client.GetOrderStatus(id)
-	// 	tryAgain = order.Status == ""
-	// }
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// if order.Status != "dead" {
-	// 	t.Fatal("Order should be dead after cancel")
-	// }
-	// t.Logf("Order confirmed dead")
-	// if order.FilledAmount != 0 {
-	// 	t.Fatal("Order should not be filled")
-	// }
-	// t.Logf("Order confirmed unfilled")
+	// Check status
+	tryAgain = true
+	for tryAgain {
+		t.Logf("checking status...")
+		order, err = client.GetOrderStatus(id)
+		tryAgain = order.Status == ""
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Order confirmed dead")
+	if order.FilledAmount != 0 {
+		t.Fatal("Order should not be filled")
+	}
+	t.Logf("Order confirmed unfilled")
 
 	// Test bad order
 	id, err = client.SendOrder("buy", otype, 0, price)

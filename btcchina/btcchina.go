@@ -392,9 +392,51 @@ func (client *Client) CancelOrder(id int64) (bool, error) {
 
 // GetOrderStatus gets the status of an order on the exchange
 func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
-	// method := "getOrder"
-	// params := []interface{}{id, client.market}
-	return exchange.Order{}, nil
+	// Set params
+	method := "getOrder"
+	params := []interface{}{id, client.market}
+	paramString := strconv.FormatInt(id, 10) + "," + client.market
+
+	// Send POST
+	req := request{method, params, 1}
+	data, err := client.post(method, paramString, req)
+	if err != nil {
+		return exchange.Order{}, fmt.Errorf("%s GetOrderStatus error: %s", client, err)
+	}
+
+	// Unmarshal
+	var response struct {
+		Result struct {
+			Order struct {
+				Status     string
+				Amount     float64 `json:"amount,string"`
+				OrigAmount float64 `json:"amount_original,string"`
+			}
+		}
+		Error struct {
+			Code    int
+			Message string
+		}
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		return exchange.Order{}, fmt.Errorf("%s CancelOrder error: %s", client, err)
+	}
+	if response.Error.Message != "" {
+		return exchange.Order{}, fmt.Errorf("%s CancelOrder error code %d: %s", client, response.Error.Code, response.Error.Message)
+	}
+
+	// Status from exchange can be "pending", "open", "cancelled", or "closed" (partial fill?)
+	var status string
+	if response.Result.Order.Status == "cancelled" || response.Result.Order.Status == "closed" {
+		status = "dead"
+	} else if response.Result.Order.Status == "open" {
+		status = "live"
+	} // else empty string is returned
+
+	// Calculate filled amount (negative number for sell orders?)
+	filled := response.Result.Order.OrigAmount - response.Result.Order.Amount
+
+	return exchange.Order{FilledAmount: filled, Status: status}, nil
 }
 
 // Authenticated POST
