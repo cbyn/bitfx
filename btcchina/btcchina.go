@@ -17,23 +17,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/websocket"
 )
 
 // Client contains all exchange information
 type Client struct {
-	key, secret, symbol, currency, websocketURL, restURL, name string
-	priority                                                   int
-	position, fee, maxPos, availShort, availFunds              float64
-	currencyCode                                               byte
+	key, secret, symbol, currency, websocketURL, restURL, name, market string
+	priority                                                           int
+	position, fee, maxPos, availShort, availFunds                      float64
+	currencyCode                                                       byte
 }
 
 // Exchange request format
 type request struct {
-	Event      string            `json:"event"`      // Event to request
-	Channel    string            `json:"channel"`    // Channel on which to make request
-	Parameters map[string]string `json:"parameters"` // Additional parameters
+	Method string        `json:"method"`
+	Params []interface{} `json:"params"`
+	ID     int           `json:"id"`
 }
 
 // New returns a pointer to a Client instance
@@ -51,6 +50,7 @@ func New(key, secret, symbol, currency string, priority int, fee, availShort, av
 		availFunds:   availFunds,
 		currencyCode: 1,
 		name:         fmt.Sprintf("BTCChina(%s)", currency),
+		market:       strings.ToUpper(symbol + currency),
 	}
 }
 
@@ -328,21 +328,14 @@ func (client *Client) SendOrder(action, otype string, amount, price float64) (in
 	}
 
 	// Set params
-	symbol := strings.ToUpper(client.symbol + client.currency)
-	params := []string{strconv.FormatFloat(price, 'f', 2, 64), strconv.FormatFloat(amount, 'f', 4, 64), symbol}
+	strPrice := strconv.FormatFloat(price, 'f', 2, 64)
+	strAmount := strconv.FormatFloat(amount, 'f', 4, 64)
+	params := []interface{}{strPrice, strAmount, client.market}
+	paramString := strings.Join([]string{strPrice, strAmount, client.market}, ",")
 
-	// Create request struct
-	request := struct {
-		Method string   `json:"method"`
-		Params []string `json:"params"`
-		ID     int      `json:"id"`
-	}{
-		method,
-		params,
-		1,
-	}
 	// Send POST
-	data, err := client.post(method, strings.Join(params, ","), request)
+	req := request{method, params, 1}
+	data, err := client.post(method, paramString, req)
 	if err != nil {
 		return 0, fmt.Errorf("%s SendOrder error: %s", client, err)
 	}
@@ -358,7 +351,6 @@ func (client *Client) SendOrder(action, otype string, amount, price float64) (in
 	if err := json.Unmarshal(data, &response); err != nil {
 		return 0, fmt.Errorf("%s SendOrder error: %s", client, err)
 	}
-	spew.Dump(response)
 	if response.Error.Message != "" {
 		return 0, fmt.Errorf("%s SendOrder error code %d: %s", client, response.Error.Code, response.Error.Message)
 	}
@@ -368,11 +360,40 @@ func (client *Client) SendOrder(action, otype string, amount, price float64) (in
 
 // CancelOrder cancels an order on the exchange
 func (client *Client) CancelOrder(id int64) (bool, error) {
-	return true, nil
+	// Set params
+	method := "cancelOrder"
+	params := []interface{}{id, client.market}
+	paramString := strconv.FormatInt(id, 10) + "," + client.market
+
+	// Send POST
+	req := request{method, params, 1}
+	data, err := client.post(method, paramString, req)
+	if err != nil {
+		return false, fmt.Errorf("%s CancelOrder error: %s", client, err)
+	}
+
+	// Unmarshal
+	var response struct {
+		Result bool
+		Error  struct {
+			Code    int
+			Message string
+		}
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		return false, fmt.Errorf("%s CancelOrder error: %s", client, err)
+	}
+	if response.Error.Message != "" {
+		return false, fmt.Errorf("%s CancelOrder error code %d: %s", client, response.Error.Code, response.Error.Message)
+	}
+
+	return response.Result, nil
 }
 
 // GetOrderStatus gets the status of an order on the exchange
 func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
+	// method := "getOrder"
+	// params := []interface{}{id, client.market}
 	return exchange.Order{}, nil
 }
 
