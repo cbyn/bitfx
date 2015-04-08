@@ -11,6 +11,7 @@ package main
 
 import (
 	"bitfx/bitfinex"
+	"bitfx/btcchina"
 	"bitfx/exchange"
 	"bitfx/forex"
 	"bitfx/okcoin"
@@ -40,6 +41,8 @@ type Config struct {
 		AvailFundsOKusd    float64 // Fiat available for trading
 		AvailShortOKcny    float64 // Max short position size
 		AvailFundsOKcny    float64 // Fiat available for trading
+		AvailShortBTC      float64 // Max short position size
+		AvailFundsBTC      float64 // Fiat available for trading
 		MinNetPos          float64 // Min acceptable net position
 		MinOrder           float64 // Min order size for arb trade
 		MaxOrder           float64 // Max order size for arb trade
@@ -93,6 +96,7 @@ func setExchanges() {
 		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 2, 0.001, cfg.Sec.AvailShortBitfinex, cfg.Sec.AvailFundsBitfinex),
 		okcoin.New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.002, cfg.Sec.AvailShortOKusd, cfg.Sec.AvailFundsOKusd),
 		okcoin.New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), cfg.Sec.Symbol, "cny", 3, 0.000, cfg.Sec.AvailShortOKcny, cfg.Sec.AvailFundsOKcny),
+		btcchina.New(os.Getenv("BTC_KEY"), os.Getenv("BTC_SECRET"), cfg.Sec.Symbol, "cny", 3, 0.000, cfg.Sec.AvailShortBTC, cfg.Sec.AvailFundsBTC),
 	}
 	for _, exg := range exchanges {
 		log.Printf("Using exchange %s with priority %d and fee of %.4f", exg, exg.Priority(), exg.Fee())
