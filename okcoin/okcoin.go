@@ -25,6 +25,7 @@ type Client struct {
 	priority                                                   int
 	position, fee, maxPos, availShort, availFunds              float64
 	currencyCode                                               byte
+	orderWS                                                    *websocket.Conn
 }
 
 // Exchange request format
@@ -129,18 +130,14 @@ func (client *Client) HasCryptoFee() bool {
 
 // CommunicateBook sends the latest available book data on the supplied channel
 func (client *Client) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) exchange.Book {
-	// Connect to websocket
-	ws, _, err := websocket.DefaultDialer.Dial(client.websocketURL, http.Header{})
+	// Connect to WebSocket
+	channel := fmt.Sprintf("ok_%s%s_depth", client.symbol, client.currency)
+	initMessage := request{Event: "addChannel", Channel: channel}
+	ws, err := client.newWS(initMessage)
 	if err != nil {
 		return exchange.Book{Error: fmt.Errorf("%s CommunicateBook error: %s", client, err)}
 	}
 
-	// Send request for book data
-	channel := fmt.Sprintf("ok_%s%s_depth", client.symbol, client.currency)
-	initMessage := request{Event: "addChannel", Channel: channel}
-	if err = ws.WriteJSON(initMessage); err != nil {
-		return exchange.Book{Error: fmt.Errorf("%s CommunicateBook error: %s", client, err)}
-	}
 	// Get an initial book to return
 	_, data, err := ws.ReadMessage()
 	if err != nil {
@@ -152,6 +149,40 @@ func (client *Client) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-
 	go client.runLoop(ws, initMessage, bookChan, doneChan)
 
 	return book
+}
+
+// Get a new WebSocket connection subscribed to specified channel
+func (client *Client) newWS(initMessage request) (*websocket.Conn, error) {
+	// Get WebSocket connection
+	ws, _, err := websocket.DefaultDialer.Dial(client.websocketURL, http.Header{})
+	if err != nil {
+		return nil, err
+	}
+
+	// Subscribe to channel
+	if err = ws.WriteJSON(initMessage); err != nil {
+		return nil, err
+	}
+
+	return ws, nil
+}
+
+// Reconnect websocket
+func (client *Client) reconnectWS(initMessage request) *websocket.Conn {
+	log.Println("Reconnecting...")
+
+	// Try reconnecting
+	ws, err := client.newWS(initMessage)
+	// Keep trying on error
+	for err != nil {
+		log.Printf("%s WebSocket error: %s", client, err)
+		time.Sleep(1 * time.Second)
+		ws, err = client.newWS(initMessage)
+	}
+
+	log.Println("Successful reconnect")
+
+	return ws
 }
 
 // Websocket read loop
@@ -169,7 +200,7 @@ func (client *Client) runLoop(ws *websocket.Conn, initMessage request, bookChan 
 			// Request to reconnect websocket
 			case <-reconnectWS:
 				ws.Close()
-				ws = client.reconnect(initMessage)
+				ws = client.reconnectWS(initMessage)
 			// Request to close websocket
 			case <-closeWS:
 				ws.Close()
@@ -219,30 +250,6 @@ func (client *Client) runLoop(ws *websocket.Conn, initMessage request, bookChan 
 			bookChan <- client.convertToBook(data)
 		}
 	}
-}
-
-// Reconnect websocket
-func (client *Client) reconnect(initMessage request) *websocket.Conn {
-	log.Println("Reconnecting...")
-
-	// Try reconnecting
-	ws, _, err := websocket.DefaultDialer.Dial(client.websocketURL, http.Header{})
-	if err == nil {
-		err = ws.WriteJSON(initMessage)
-	}
-	// Keep trying on error
-	for err != nil {
-		log.Printf("%s WebSocket error: %s", client, err)
-		time.Sleep(1 * time.Second)
-		ws, _, err = websocket.DefaultDialer.Dial(client.websocketURL, http.Header{})
-		if err == nil {
-			err = ws.WriteJSON(initMessage)
-		}
-	}
-
-	log.Println("Successful reconnect")
-
-	return ws
 }
 
 // Convert websocket data to an exchange.Book
