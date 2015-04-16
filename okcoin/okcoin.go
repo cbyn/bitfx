@@ -25,7 +25,8 @@ type Client struct {
 	priority                                                   int
 	position, fee, maxPos, availShort, availFunds              float64
 	currencyCode                                               byte
-	orderWS                                                    *websocket.Conn
+	writeOrderMsg                                              chan request
+	readOrderMsg                                               chan response
 }
 
 // Exchange request format
@@ -33,6 +34,13 @@ type request struct {
 	Event      string            `json:"event"`      // Event to request
 	Channel    string            `json:"channel"`    // Channel on which to make request
 	Parameters map[string]string `json:"parameters"` // Additional parameters
+}
+
+// Exchange response format
+type response []struct {
+	Channel   string          `json:"channel"`          // Channel name
+	ErrorCode int64           `json:"errorcode,string"` // Error code if not successful
+	Data      json.RawMessage `json:"data"`             // Data specific to channel
 }
 
 // New returns a pointer to a Client instance
@@ -255,34 +263,34 @@ func (client *Client) runLoop(ws *websocket.Conn, initMessage request, bookChan 
 // Convert websocket data to an exchange.Book
 func (client *Client) convertToBook(data []byte) exchange.Book {
 	// Unmarshal
-	var response []struct {
-		Channel   string `json:"channel"`          // Channel name
-		ErrorCode int64  `json:"errorcode,string"` // Error code if not successful
-		Data      struct {
-			Bids       [][2]float64 `json:"bids"`             // Slice of bid data items
-			Asks       [][2]float64 `json:"asks"`             // Slice of ask data items
-			Timestamp  int64        `json:"timestamp,string"` // Timestamp
-			UnitAmount int          `json:"unit_amount"`      // Unit amount for futures
-
-		} `json:"data"` // Data specific to channel
-	}
-	if err := json.Unmarshal(data, &response); err != nil {
+	var resp response
+	if err := json.Unmarshal(data, &resp); err != nil {
 		return exchange.Book{Error: fmt.Errorf("%s book error: %s", client, err)}
 	}
-
 	// Return error if there is an exchange error code
-	if response[0].ErrorCode != 0 {
-		return exchange.Book{Error: fmt.Errorf("%s book error code: %d", client, response[0].ErrorCode)}
+	if resp[0].ErrorCode != 0 {
+		return exchange.Book{Error: fmt.Errorf("%s book error code: %d", client, resp[0].ErrorCode)}
+	}
+	// Data structure from the exchange
+	var bookData struct {
+		Bids       [][2]float64 `json:"bids"`             // Slice of bid data items
+		Asks       [][2]float64 `json:"asks"`             // Slice of ask data items
+		Timestamp  int64        `json:"timestamp,string"` // Timestamp
+		UnitAmount int          `json:"unit_amount"`      // Unit amount for futures
+
+	}
+	if err := json.Unmarshal(resp[0].Data, &bookData); err != nil {
+		return exchange.Book{Error: fmt.Errorf("%s book error: %s", client, err)}
 	}
 
 	// Translate into exchange.Book structure
 	bids := make(exchange.BidItems, 20)
 	asks := make(exchange.AskItems, 20)
 	for i := 0; i < 20; i++ {
-		bids[i].Price = response[0].Data.Bids[i][0]
-		bids[i].Amount = response[0].Data.Bids[i][1]
-		asks[i].Price = response[0].Data.Asks[i][0]
-		asks[i].Amount = response[0].Data.Asks[i][1]
+		bids[i].Price = bookData.Bids[i][0]
+		bids[i].Amount = bookData.Bids[i][1]
+		asks[i].Price = bookData.Asks[i][0]
+		asks[i].Amount = bookData.Asks[i][1]
 	}
 	sort.Sort(bids)
 	sort.Sort(asks)
