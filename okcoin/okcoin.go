@@ -103,6 +103,8 @@ func New(key, secret, symbol, currency string, priority int, fee, availShort, av
 func (client *Client) Done() {
 	client.done <- true
 	client.done <- true
+	close(client.readBookMsg)
+	close(client.readOrderMsg)
 }
 
 // String implements the Stringer interface
@@ -265,12 +267,13 @@ func (client *Client) maintainWS(initMsg request, writeMsg <-chan request, readM
 				// Send out if not a pong and a receiver is ready
 				var resp response
 				if err := json.Unmarshal(data, &resp); err != nil {
+					// Send response with error code on unmarshal errors
 					resp = response{{ErrorCode: -2}}
 				}
 				select {
 				case readMsg <- resp:
 				default:
-					// Discard data
+					// Discard data if a receiver is not ready
 				}
 			}
 		}
@@ -327,6 +330,7 @@ func (client *Client) newWS(initMsg request) (*websocket.Conn, error) {
 		return nil, err
 	}
 
+	log.Println("Successful Connect")
 	return ws, nil
 }
 
@@ -334,14 +338,13 @@ func (client *Client) newWS(initMsg request) (*websocket.Conn, error) {
 func (client *Client) persistentNewWS(initMsg request) *websocket.Conn {
 	// Try connecting
 	ws, err := client.newWS(initMsg)
+
 	// Keep trying on error
 	for err != nil {
 		log.Printf("%s WebSocket error: %s", client, err)
 		time.Sleep(1 * time.Second)
 		ws, err = client.newWS(initMsg)
 	}
-
-	log.Println("Successful Connect")
 
 	return ws
 }
