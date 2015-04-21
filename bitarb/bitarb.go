@@ -508,14 +508,14 @@ func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fil
 		err   error
 		order exchange.Order
 	)
+
 	// Send order
-	for {
-		id, err = exg.SendOrder(action, "limit", amount, price)
-		isError(err)
-		if id != 0 {
-			break
-		}
+	id, err = exg.SendOrder(action, "limit", amount, price)
+	if isError(err) || id == 0 {
+		fillChan <- 0
+		return
 	}
+
 	// Check status and cancel if necessary
 	for {
 		order, err = exg.GetOrderStatus(id)
