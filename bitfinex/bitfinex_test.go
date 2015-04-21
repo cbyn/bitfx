@@ -115,8 +115,7 @@ func TestHasCryptoFee(t *testing.T) {
 
 func TestCommunicateBook(t *testing.T) {
 	bookChan := make(chan exchange.Book)
-	doneChan := make(chan bool)
-	if book = client.CommunicateBook(bookChan, doneChan); book.Error != nil {
+	if book = client.CommunicateBook(bookChan); book.Error != nil {
 		t.Fatal(book.Error)
 	}
 
@@ -132,7 +131,6 @@ func TestCommunicateBook(t *testing.T) {
 	if book.Asks[0].Price > book.Asks[1].Price {
 		t.Fatal("Asks not sorted correctly")
 	}
-	doneChan <- true
 }
 
 func TestNewOrder(t *testing.T) {
@@ -196,4 +194,6 @@ func TestNewOrder(t *testing.T) {
 	if id != 0 {
 		t.Fatal("Expected id = 0")
 	}
+
+	client.Done()
 }

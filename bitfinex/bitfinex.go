@@ -24,6 +24,7 @@ type Client struct {
 	priority                                      int
 	position, fee, maxPos, availShort, availFunds float64
 	currencyCode                                  byte
+	done                                          chan bool
 }
 
 // New returns a pointer to a Client instance
@@ -40,7 +41,13 @@ func New(key, secret, symbol, currency string, priority int, fee, availShort, av
 		currencyCode: 0,
 		name:         fmt.Sprintf("Bitfinex(%s)", currency),
 		baseURL:      "https://api.bitfinex.com",
+		done:         make(chan bool, 1),
 	}
+}
+
+// Done closes all connections
+func (client *Client) Done() {
+	client.done <- true
 }
 
 // String implements the Stringer interface
@@ -104,24 +111,24 @@ func (client *Client) HasCryptoFee() bool {
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel
-func (client *Client) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) exchange.Book {
+func (client *Client) CommunicateBook(bookChan chan<- exchange.Book) exchange.Book {
 	// Initial book to return
 	book, _ := client.getBook()
 
 	// Run read loop in new goroutine
-	go client.runLoop(bookChan, doneChan)
+	go client.runLoop(bookChan)
 
 	return book
 }
 
 // HTTP read loop
-func (client *Client) runLoop(bookChan chan<- exchange.Book, doneChan <-chan bool) {
+func (client *Client) runLoop(bookChan chan<- exchange.Book) {
 	// Used to compare timestamps
 	oldTimestamps := make([]float64, 40)
 
 	for {
 		select {
-		case <-doneChan:
+		case <-client.done:
 			return
 		default:
 			book, newTimestamps := client.getBook()
