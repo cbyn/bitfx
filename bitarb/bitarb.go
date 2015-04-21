@@ -11,7 +11,6 @@ package main
 
 import (
 	"bitfx/bitfinex"
-	"bitfx/btcchina"
 	"bitfx/exchange"
 	"bitfx/forex"
 	"bitfx/okcoin"
@@ -96,7 +95,7 @@ func setExchanges() {
 		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 2, 0.001, cfg.Sec.AvailShortBitfinex, cfg.Sec.AvailFundsBitfinex),
 		okcoin.New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.002, cfg.Sec.AvailShortOKusd, cfg.Sec.AvailFundsOKusd),
 		okcoin.New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), cfg.Sec.Symbol, "cny", 3, 0.000, cfg.Sec.AvailShortOKcny, cfg.Sec.AvailFundsOKcny),
-		btcchina.New(os.Getenv("BTC_KEY"), os.Getenv("BTC_SECRET"), cfg.Sec.Symbol, "cny", 3, 0.000, cfg.Sec.AvailShortBTC, cfg.Sec.AvailFundsBTC),
+		// btcchina.New(os.Getenv("BTC_KEY"), os.Getenv("BTC_SECRET"), cfg.Sec.Symbol, "cny", 3, 0.000, cfg.Sec.AvailShortBTC, cfg.Sec.AvailFundsBTC),
 	}
 	for _, exg := range exchanges {
 		log.Printf("Using exchange %s with priority %d and fee of %.4f", exg, exg.Priority(), exg.Fee())
@@ -186,12 +185,10 @@ func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filtere
 	markets := make(map[exchange.Exchange]filteredBook)
 	// Channel to receive book data from exchanges
 	bookChan := make(chan exchange.Book)
-	// Channel to notify exchanges when finished
-	exgDoneChan := make(chan bool, len(exchanges))
 
 	// Initiate communication with each exchange and initialize markets map
 	for _, exg := range exchanges {
-		book := exg.CommunicateBook(bookChan, exgDoneChan)
+		book := exg.CommunicateBook(bookChan)
 		if book.Error != nil {
 			log.Fatal(book.Error)
 		}
@@ -220,8 +217,8 @@ func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filtere
 		case <-doneChan:
 			close(newBook)
 			fxDoneChan <- true
-			for _ = range exchanges {
-				exgDoneChan <- true
+			for _, exg := range exchanges {
+				exg.Done()
 			}
 			return
 		}
