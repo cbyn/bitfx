@@ -7,7 +7,6 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
@@ -21,15 +20,15 @@ import (
 
 // Client contains all exchange information
 type Client struct {
-	key, secret, symbol, currency, websocketURL, restURL, name string
-	priority                                                   int
-	position, fee, maxPos, availShort, availFunds              float64
-	currencyCode                                               byte
-	done                                                       chan bool
-	writeBookMsg                                               chan request
-	readBookMsg                                                chan response
-	writeOrderMsg                                              chan request
-	readOrderMsg                                               chan response
+	key, secret, symbol, currency, websocketURL, name string
+	priority                                          int
+	position, fee, maxPos, availShort, availFunds     float64
+	currencyCode                                      byte
+	done                                              chan bool
+	writeBookMsg                                      chan request
+	readBookMsg                                       chan response
+	writeOrderMsg                                     chan request
+	readOrderMsg                                      chan response
 }
 
 // Exchange request format
@@ -49,15 +48,13 @@ type response []struct {
 // New returns a pointer to a Client instance
 func New(key, secret, symbol, currency string, priority int, fee, availShort, availFunds float64) *Client {
 	// URL depends on currency
-	var websocketURL, restURL string
+	var websocketURL string
 	var currencyCode byte
 	if strings.ToLower(currency) == "usd" {
 		websocketURL = "wss://real.okcoin.com:10440/websocket/okcoinapi"
-		restURL = "https://www.okcoin.com/api/v1"
 		currencyCode = 0
 	} else if strings.ToLower(currency) == "cny" {
 		websocketURL = "wss://real.okcoin.cn:10440/websocket/okcoinapi"
-		restURL = "https://www.okcoin.cn/api/v1"
 		currencyCode = 1
 	} else {
 		log.Fatal("Currency must be USD or CNY")
@@ -77,7 +74,6 @@ func New(key, secret, symbol, currency string, priority int, fee, availShort, av
 		symbol:        symbol,
 		currency:      currency,
 		websocketURL:  websocketURL,
-		restURL:       restURL,
 		priority:      priority,
 		fee:           fee,
 		availShort:    availShort,
@@ -178,7 +174,7 @@ func (client *Client) CommunicateBook(bookChan chan<- exchange.Book) exchange.Bo
 	return book
 }
 
-// Websocket read loop
+// Book WebSocket read loop
 func (client *Client) runBookLoop(bookChan chan<- exchange.Book) {
 	for resp := range client.readBookMsg {
 		// Process data and send out to user
@@ -268,71 +264,86 @@ func (client *Client) SendOrder(action, otype string, amount, price float64) (in
 
 // CancelOrder cancels an order on the exchange
 func (client *Client) CancelOrder(id int64) (bool, error) {
-	// Create parameter map for signing
+	// Construct parameters
 	params := make(map[string]string)
+	params["api_key"] = client.key
 	params["symbol"] = fmt.Sprintf("%s_%s", client.symbol, client.currency)
 	params["order_id"] = fmt.Sprintf("%d", id)
+	params["sign"] = client.constructSign(params)
 
-	// Send POST request
-	data, err := client.post(client.restURL+"/cancel_order.do", params)
-	if err != nil {
+	// Construct request
+	channel := fmt.Sprintf("ok_spot%s_cancel_order", client.currency)
+	req := request{Event: "addChannel", Channel: channel, Parameters: params}
+
+	// Write to WebSocket
+	client.writeOrderMsg <- req
+
+	// Read response
+	resp := <-client.readOrderMsg
+
+	if resp[0].ErrorCode != 0 {
+		return false, fmt.Errorf("%s CancelOrder error code: %d", client, resp[0].ErrorCode)
+	}
+
+	// Unmarshal
+	var orderData struct {
+		ID     int64 `json:"order_id,string"`
+		Result bool  `json:"result,string"`
+	}
+	if err := json.Unmarshal(resp[0].Data, &orderData); err != nil {
 		return false, fmt.Errorf("%s CancelOrder error: %s", client, err)
 	}
 
-	// Unmarshal response
-	var response struct {
-		Result    bool  `json:"result"`
-		ErrorCode int64 `json:"error_code"`
-	}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return false, fmt.Errorf("%s CancelOrder error: %s", client, err)
-	}
-	if response.ErrorCode != 0 {
-		return false, fmt.Errorf("%s CancelOrder error code: %d", client, response.ErrorCode)
-	}
-
-	return response.Result, nil
+	return orderData.Result, nil
 }
 
 // GetOrderStatus gets the status of an order on the exchange
 func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
-	// Create parameter map for signing
+	// Construct parameters
 	params := make(map[string]string)
+	params["api_key"] = client.key
 	params["symbol"] = fmt.Sprintf("%s_%s", client.symbol, client.currency)
 	params["order_id"] = fmt.Sprintf("%d", id)
+	params["sign"] = client.constructSign(params)
+
+	// Construct request
+	channel := fmt.Sprintf("ok_spot%s_order_info", client.currency)
+	req := request{Event: "addChannel", Channel: channel, Parameters: params}
+
+	// Write to WebSocket
+	client.writeOrderMsg <- req
+
+	// Read response
+	resp := <-client.readOrderMsg
 
 	// Create order to be returned
 	var order exchange.Order
 
-	// Send POST request
-	data, err := client.post(client.restURL+"/order_info.do", params)
-	if err != nil {
-		return order, fmt.Errorf("%s GetOrderStatus error: %s", client, err)
+	if resp[0].ErrorCode != 0 {
+		return order, fmt.Errorf("%s GetOrderStatus error code: %d", client, resp[0].ErrorCode)
 	}
 
-	// Unmarshal response
-	var response struct {
+	// Unmarshal
+	var orderData struct {
 		Orders []struct {
 			Status     int     `json:"status"`
 			DealAmount float64 `json:"deal_amount"`
 		} `json:"orders"`
-		ErrorCode int64 `json:"error_code"`
 	}
-	if err := json.Unmarshal(data, &response); err != nil {
+	if err := json.Unmarshal(resp[0].Data, &orderData); err != nil {
 		return order, fmt.Errorf("%s GetOrderStatus error: %s", client, err)
 	}
-	if response.ErrorCode != 0 {
-		return order, fmt.Errorf("%s GetOrderStatus error code: %d", client, response.ErrorCode)
-	}
 
-	if response.Orders[0].Status == -1 || response.Orders[0].Status == 2 {
+	// Determine order status
+	if orderData.Orders[0].Status == -1 || orderData.Orders[0].Status == 2 {
 		order.Status = "dead"
-	} else if response.Orders[0].Status == 4 || response.Orders[0].Status == 5 {
+	} else if orderData.Orders[0].Status == 4 || orderData.Orders[0].Status == 5 {
 		order.Status = ""
 	} else {
 		order.Status = "live"
 	}
-	order.FilledAmount = math.Abs(response.Orders[0].DealAmount)
+	order.FilledAmount = math.Abs(orderData.Orders[0].DealAmount)
+
 	return order, nil
 
 }
@@ -354,38 +365,6 @@ func (client *Client) constructSign(params map[string]string) string {
 	sum := md5.Sum([]byte(stringParams))
 
 	return strings.ToUpper(fmt.Sprintf("%x", sum))
-}
-
-// Authenticated POST
-func (client *Client) post(stringrestURL string, params map[string]string) ([]byte, error) {
-	// Make url.Values from params
-	values := url.Values{}
-	for param, value := range params {
-		values.Set(param, value)
-	}
-	// Add authorization key to url.Values
-	values.Set("api_key", client.key)
-	// Prepare string to sign with MD5
-	stringParams := values.Encode()
-	// Add the authorization secret to the end
-	stringParams += fmt.Sprintf("&secret_key=%s", client.secret)
-	// Sign with MD5
-	sum := md5.Sum([]byte(stringParams))
-	// Add sign to url.Values
-	values.Set("sign", strings.ToUpper(fmt.Sprintf("%x", sum)))
-
-	// Send POST
-	resp, err := http.PostForm(stringrestURL, values)
-	if err != nil {
-		return []byte{}, err
-	}
-	if resp.StatusCode != 200 {
-		return []byte{}, fmt.Errorf(resp.Status)
-	}
-	defer resp.Body.Close()
-
-	return ioutil.ReadAll(resp.Body)
-
 }
 
 // Maintain a WebSocket connection
