@@ -34,8 +34,8 @@ type Exchange interface {
 	// USD = 0
 	// CNY = 1
 	CurrencyCode() byte
-	// Send the latest availble exchange.Book on the supplied channel
-	CommunicateBook(bookChan chan<- Book, doneChan <-chan bool) Book
+	// Send the latest available exchange.Book on the supplied channel
+	CommunicateBook(bookChan chan<- Book) Book
 	// Send an order to the exchange
 	// action = "buy" or "sell"
 	// otype = "limit" or "market"
@@ -46,6 +46,8 @@ type Exchange interface {
 	GetOrderStatus(id int64) (Order, error)
 	// Return true if fees are charged in cryptocurrency on purchases
 	HasCryptoFee() bool
+	// Close all connections
+	Done()
 }
 
 // Order status data from the exchange *****************************************
