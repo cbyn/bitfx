@@ -26,8 +26,10 @@ type Client struct {
 	position, fee, maxPos, availShort, availFunds              float64
 	currencyCode                                               byte
 	done                                                       chan bool
-	writeOrderMsg                                              chan []byte
-	readOrderMsg                                               chan []byte
+	writeBookMsg                                               chan request
+	readBookMsg                                                chan response
+	writeOrderMsg                                              chan request
+	readOrderMsg                                               chan response
 }
 
 // Exchange request format
@@ -62,13 +64,14 @@ func New(key, secret, symbol, currency string, priority int, fee, availShort, av
 	}
 	name := fmt.Sprintf("OKCoin(%s)", currency)
 
-	// Setup WebSocket connection for order related methods
-	done := make(chan bool)
-	writeOrderMsg := make(chan []byte)
-	readOrderMsg := make(chan []byte)
-	go maintainWS(websocketURL, name, []byte{}, writeOrderMsg, readOrderMsg, done)
+	// Channels for WebSocket connections
+	done := make(chan bool, 2)
+	writeBookMsg := make(chan request)
+	readBookMsg := make(chan response)
+	writeOrderMsg := make(chan request)
+	readOrderMsg := make(chan response)
 
-	return &Client{
+	client := &Client{
 		key:           key,
 		secret:        secret,
 		symbol:        symbol,
@@ -84,7 +87,22 @@ func New(key, secret, symbol, currency string, priority int, fee, availShort, av
 		done:          done,
 		writeOrderMsg: writeOrderMsg,
 		readOrderMsg:  readOrderMsg,
+		writeBookMsg:  writeBookMsg,
+		readBookMsg:   readBookMsg,
 	}
+
+	// Run WebSocket connections
+	initMsg := request{Event: "addChannel", Channel: fmt.Sprintf("ok_%s%s_depth", symbol, currency)}
+	go client.maintainWS(initMsg, writeBookMsg, readBookMsg)
+	go client.maintainWS(request{}, writeOrderMsg, readOrderMsg)
+
+	return client
+}
+
+// Done closes all connections
+func (client *Client) Done() {
+	client.done <- true
+	client.done <- true
 }
 
 // String implements the Stringer interface
@@ -148,149 +166,27 @@ func (client *Client) HasCryptoFee() bool {
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel
-func (client *Client) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) exchange.Book {
-	// Connect to WebSocket
-	channel := fmt.Sprintf("ok_%s%s_depth", client.symbol, client.currency)
-	initMessage := request{Event: "addChannel", Channel: channel}
-	ws, err := client.newWS(initMessage)
-	if err != nil {
-		return exchange.Book{Error: fmt.Errorf("%s CommunicateBook error: %s", client, err)}
-	}
-
+func (client *Client) CommunicateBook(bookChan chan<- exchange.Book) exchange.Book {
 	// Get an initial book to return
-	_, data, err := ws.ReadMessage()
-	if err != nil {
-		return exchange.Book{Error: fmt.Errorf("%s CommunicateBook error: %s", client, err)}
-	}
-	book := client.convertToBook(data)
+	book := client.convertToBook(<-client.readBookMsg)
 
 	// Run a read loop in new goroutine
-	go client.runLoop(ws, initMessage, bookChan, doneChan)
+	go client.runLoop(bookChan)
 
 	return book
 }
 
-// Get a new WebSocket connection subscribed to specified channel
-func (client *Client) newWS(initMessage request) (*websocket.Conn, error) {
-	// Get WebSocket connection
-	ws, _, err := websocket.DefaultDialer.Dial(client.websocketURL, http.Header{})
-	if err != nil {
-		return nil, err
-	}
-
-	// Subscribe to channel
-	if err = ws.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		return nil, err
-	}
-	if err = ws.WriteJSON(initMessage); err != nil {
-		return nil, err
-	}
-
-	// Set a zero timeout for future writes
-	if err = ws.SetWriteDeadline(time.Time{}); err != nil {
-		return nil, err
-	}
-
-	return ws, nil
-}
-
-// Reconnect websocket
-func (client *Client) reconnectWS(initMessage request) *websocket.Conn {
-	log.Println("Reconnecting...")
-
-	// Try reconnecting
-	ws, err := client.newWS(initMessage)
-	// Keep trying on error
-	for err != nil {
-		log.Printf("%s WebSocket error: %s", client, err)
-		time.Sleep(1 * time.Second)
-		ws, err = client.newWS(initMessage)
-	}
-
-	log.Println("Successful reconnect")
-
-	return ws
-}
-
 // Websocket read loop
-func (client *Client) runLoop(ws *websocket.Conn, initMessage request, bookChan chan<- exchange.Book, doneChan <-chan bool) {
-	// Syncronize access to *websocket.Conn
-	receiveWS := make(chan *websocket.Conn)
-	reconnectWS := make(chan bool)
-	closeWS := make(chan bool)
-	go func() {
-	LOOP:
-		for {
-			select {
-			// Request to use websocket
-			case receiveWS <- ws:
-			// Request to reconnect websocket
-			case <-reconnectWS:
-				ws.Close()
-				ws = client.reconnectWS(initMessage)
-			// Request to close websocket
-			case <-closeWS:
-				ws.Close()
-				break LOOP
-			}
-		}
-	}()
-
-	// Setup heartbeat
-	pingInterval := 15 * time.Second
-	ticker := time.NewTicker(pingInterval)
-	ping := []byte(`{"event":"ping"}`)
-
-	// Read from websocket
-	dataChan := make(chan []byte)
-	go func() {
-		for {
-			(<-receiveWS).SetReadDeadline(time.Now().Add(pingInterval + time.Second))
-			_, data, err := (<-receiveWS).ReadMessage()
-			if err != nil {
-				// Reconnect on error
-				log.Printf("%s WebSocket error: %s", client, err)
-				reconnectWS <- true
-			} else if string(data) != `{"event":"pong"}` {
-				// If not a pong, send for processing
-				dataChan <- data
-			}
-		}
-	}()
-
-	for {
-		select {
-		case <-doneChan:
-			// End if notified
-			ticker.Stop()
-			closeWS <- true
-			return
-		case <-ticker.C:
-			// Send ping (true type-9 pings not supported by server)
-			if err := (<-receiveWS).WriteMessage(1, ping); err != nil {
-				// Reconnect on error
-				log.Printf("%s WebSocket error: %s", client, err)
-				reconnectWS <- true
-			}
-		case data := <-dataChan:
-			// Process data and send out to user
-			bookChan <- client.convertToBook(data)
-		}
+func (client *Client) runLoop(bookChan chan<- exchange.Book) {
+	for resp := range client.readBookMsg {
+		// Process data and send out to user
+		bookChan <- client.convertToBook(resp)
 	}
 }
 
 // Convert websocket data to an exchange.Book
-func (client *Client) convertToBook(data []byte) exchange.Book {
+func (client *Client) convertToBook(resp response) exchange.Book {
 	// Unmarshal
-	var resp response
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return exchange.Book{Error: fmt.Errorf("%s book error: %s", client, err)}
-	}
-	// Return error if there is an exchange error code
-	if resp[0].ErrorCode != 0 {
-		return exchange.Book{Error: fmt.Errorf("%s book error code: %d", client, resp[0].ErrorCode)}
-	}
-	// Data structure from the exchange
 	var bookData struct {
 		Bids       [][2]float64 `json:"bids"`             // Slice of bid data items
 		Asks       [][2]float64 `json:"asks"`             // Slice of ask data items
@@ -325,9 +221,9 @@ func (client *Client) convertToBook(data []byte) exchange.Book {
 }
 
 // Maintain a WebSocket connection
-func maintainWS(websocketURL, exgName string, initMessage []byte, writeMsg <-chan []byte, readMsg chan<- []byte, done <-chan bool) {
+func (client *Client) maintainWS(initMsg request, writeMsg <-chan request, readMsg chan<- response) {
 	// Get a WebSocket connection
-	ws := persistentNewWS(websocketURL, exgName, initMessage)
+	ws := client.persistentNewWS(initMsg)
 
 	// Syncronize access to *websocket.Conn
 	receiveWS := make(chan *websocket.Conn)
@@ -342,7 +238,7 @@ func maintainWS(websocketURL, exgName string, initMessage []byte, writeMsg <-cha
 			// Request to reconnect websocket
 			case <-reconnectWS:
 				ws.Close()
-				ws = persistentNewWS(websocketURL, exgName, initMessage)
+				ws = client.persistentNewWS(initMsg)
 			// Request to close websocket
 			case <-closeWS:
 				ws.Close()
@@ -363,12 +259,16 @@ func maintainWS(websocketURL, exgName string, initMessage []byte, writeMsg <-cha
 			_, data, err := (<-receiveWS).ReadMessage()
 			if err != nil {
 				// Reconnect on error
-				log.Printf("%s WebSocket error: %s", exgName, err)
+				log.Printf("%s WebSocket error: %s", client, err)
 				reconnectWS <- true
 			} else if string(data) != `{"event":"pong"}` {
 				// Send out if not a pong and a receiver is ready
+				var resp response
+				if err := json.Unmarshal(data, &resp); err != nil {
+					resp = response{{ErrorCode: -2}}
+				}
 				select {
-				case readMsg <- data:
+				case readMsg <- resp:
 				default:
 					// Discard data
 				}
@@ -379,7 +279,7 @@ func maintainWS(websocketURL, exgName string, initMessage []byte, writeMsg <-cha
 	// Manage connection
 	for {
 		select {
-		case <-done:
+		case <-client.done:
 			// End if notified
 			ticker.Stop()
 			closeWS <- true
@@ -388,15 +288,15 @@ func maintainWS(websocketURL, exgName string, initMessage []byte, writeMsg <-cha
 			// Send ping (true type-9 pings not supported by server)
 			if err := (<-receiveWS).WriteMessage(1, ping); err != nil {
 				// Reconnect on error
-				log.Printf("%s WebSocket error: %s", exgName, err)
+				log.Printf("%s WebSocket error: %s", client, err)
 				reconnectWS <- true
 			}
 		case msg := <-writeMsg:
 			// Write received message to WebSocket
-			if err := (<-receiveWS).WriteMessage(1, msg); err != nil {
+			if err := (<-receiveWS).WriteJSON(msg); err != nil {
 				// Notify sender and reconnect on error
-				readMsg <- []byte("error")
-				log.Printf("%s WebSocket error: %s", exgName, err)
+				log.Printf("%s WebSocket error: %s", client, err)
+				readMsg <- response{{ErrorCode: -1}}
 				reconnectWS <- true
 			}
 		}
@@ -405,19 +305,21 @@ func maintainWS(websocketURL, exgName string, initMessage []byte, writeMsg <-cha
 }
 
 // Get a new WebSocket connection subscribed to specified channel
-func newWS(websocketURL string, initMessage []byte) (*websocket.Conn, error) {
+func (client *Client) newWS(initMsg request) (*websocket.Conn, error) {
 	// Get WebSocket connection
-	ws, _, err := websocket.DefaultDialer.Dial(websocketURL, http.Header{})
+	ws, _, err := websocket.DefaultDialer.Dial(client.websocketURL, http.Header{})
 	if err != nil {
 		return nil, err
 	}
 
-	// Subscribe to channel
-	if err = ws.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		return nil, err
-	}
-	if err = ws.WriteMessage(1, initMessage); err != nil {
-		return nil, err
+	// Subscribe to channel if specified
+	if initMsg.Event != "" {
+		if err = ws.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			return nil, err
+		}
+		if err = ws.WriteJSON(initMsg); err != nil {
+			return nil, err
+		}
 	}
 
 	// Set a zero timeout for future writes
@@ -429,14 +331,14 @@ func newWS(websocketURL string, initMessage []byte) (*websocket.Conn, error) {
 }
 
 // Connect WebSocket with repeated tries on failure
-func persistentNewWS(websocketURL, exgName string, initMessage []byte) *websocket.Conn {
+func (client *Client) persistentNewWS(initMsg request) *websocket.Conn {
 	// Try connecting
-	ws, err := newWS(websocketURL, initMessage)
+	ws, err := client.newWS(initMsg)
 	// Keep trying on error
 	for err != nil {
-		log.Printf("%s WebSocket error: %s", exgName, err)
+		log.Printf("%s WebSocket error: %s", client, err)
 		time.Sleep(1 * time.Second)
-		ws, err = newWS(websocketURL, initMessage)
+		ws, err = client.newWS(initMsg)
 	}
 
 	log.Println("Successful Connect")
