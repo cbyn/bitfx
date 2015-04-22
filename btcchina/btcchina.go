@@ -26,6 +26,7 @@ type Client struct {
 	priority                                                           int
 	position, fee, maxPos, availShort, availFunds                      float64
 	currencyCode                                                       byte
+	done                                                               chan bool
 }
 
 // Exchange request format
@@ -51,7 +52,13 @@ func New(key, secret, symbol, currency string, priority int, fee, availShort, av
 		currencyCode: 1,
 		name:         fmt.Sprintf("BTCChina(%s)", currency),
 		market:       strings.ToUpper(symbol + currency),
+		done:         make(chan bool, 1),
 	}
+}
+
+// Done closes all connections
+func (client *Client) Done() {
+	client.done <- true
 }
 
 // String implements the Stringer interface
@@ -115,7 +122,7 @@ func (client *Client) HasCryptoFee() bool {
 }
 
 // CommunicateBook sends the latest available book data on the supplied channel
-func (client *Client) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-chan bool) exchange.Book {
+func (client *Client) CommunicateBook(bookChan chan<- exchange.Book) exchange.Book {
 	// Connect to Socket.IO
 	ws, pingInterval, err := client.connectSocketIO()
 	if err != nil {
@@ -130,7 +137,7 @@ func (client *Client) CommunicateBook(bookChan chan<- exchange.Book, doneChan <-
 	book := client.convertToBook(data)
 
 	// Run a read loop in new goroutine
-	go client.runLoop(ws, pingInterval, bookChan, doneChan)
+	go client.runLoop(ws, pingInterval, bookChan)
 
 	return book
 }
@@ -193,7 +200,7 @@ func (client *Client) connectSocketIO() (*websocket.Conn, time.Duration, error) 
 }
 
 // Websocket read loop
-func (client *Client) runLoop(ws *websocket.Conn, pingInterval time.Duration, bookChan chan<- exchange.Book, doneChan <-chan bool) {
+func (client *Client) runLoop(ws *websocket.Conn, pingInterval time.Duration, bookChan chan<- exchange.Book) {
 	// Syncronize access to *websocket.Conn
 	receiveWS := make(chan *websocket.Conn)
 	reconnectWS := make(chan bool)
@@ -246,7 +253,7 @@ func (client *Client) runLoop(ws *websocket.Conn, pingInterval time.Duration, bo
 
 	for {
 		select {
-		case <-doneChan:
+		case <-client.done:
 			// End if notified
 			ticker.Stop()
 			closeWS <- true

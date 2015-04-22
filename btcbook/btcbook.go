@@ -33,9 +33,8 @@ func main() {
 	}
 	cny = quote.Price
 
-	doneChan := make(chan bool, 1)
 	bookChan := make(chan exchange.Book)
-	if book := btc.CommunicateBook(bookChan, doneChan); book.Error != nil {
+	if book := btc.CommunicateBook(bookChan); book.Error != nil {
 		log.Fatal(book.Error)
 	}
 	inputChan := make(chan rune)
@@ -47,7 +46,7 @@ Loop:
 		case book := <-bookChan:
 			printBook(book)
 		case <-inputChan:
-			doneChan <- true
+			btc.Done()
 			fxDoneChan <- true
 			break Loop
 		}
