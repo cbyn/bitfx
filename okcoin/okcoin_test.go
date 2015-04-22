@@ -89,8 +89,7 @@ func TestHasCryptoFee(t *testing.T) {
 
 func TestCommunicateBookUSD(t *testing.T) {
 	bookChan := make(chan exchange.Book)
-	doneChan := make(chan bool)
-	if book = client.CommunicateBook(bookChan, doneChan); book.Error != nil {
+	if book = client.CommunicateBook(bookChan); book.Error != nil {
 		t.Fatal(book.Error)
 	}
 
@@ -106,7 +105,6 @@ func TestCommunicateBookUSD(t *testing.T) {
 	if book.Asks[0].Price > book.Asks[1].Price {
 		t.Fatal("Asks not sorted correctly")
 	}
-	doneChan <- true
 }
 
 func TestNewOrderUSD(t *testing.T) {
@@ -173,6 +171,8 @@ func TestNewOrderUSD(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error on bad order")
 	}
+
+	client.Done()
 }
 
 // CNY tesing
@@ -189,8 +189,7 @@ func TestCurrencyCodeCNY(t *testing.T) {
 
 func TestCommunicateBookCNY(t *testing.T) {
 	bookChan := make(chan exchange.Book)
-	doneChan := make(chan bool)
-	if book = client.CommunicateBook(bookChan, doneChan); book.Error != nil {
+	if book = client.CommunicateBook(bookChan); book.Error != nil {
 		t.Fatal(book.Error)
 	}
 
@@ -206,7 +205,6 @@ func TestCommunicateBookCNY(t *testing.T) {
 	if book.Asks[0].Price > book.Asks[1].Price {
 		t.Fatal("Asks not sorted correctly")
 	}
-	doneChan <- true
 }
 
 func TestNewOrderCNY(t *testing.T) {
@@ -273,4 +271,6 @@ func TestNewOrderCNY(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error on bad order")
 	}
+
+	client.Done()
 }
