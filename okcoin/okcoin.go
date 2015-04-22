@@ -241,7 +241,12 @@ func (client *Client) SendOrder(action, otype string, amount, price float64) (in
 	client.writeOrderMsg <- req
 
 	// Read response
-	resp := <-client.readOrderMsg
+	var resp response
+	select {
+	case resp = <-client.readOrderMsg:
+	case <-time.After(3 * time.Second):
+		return 0, fmt.Errorf("%s SendOrder read timeout", client)
+	}
 
 	if resp[0].ErrorCode != 0 {
 		return 0, fmt.Errorf("%s SendOrder error code: %d", client, resp[0].ErrorCode)
@@ -279,7 +284,12 @@ func (client *Client) CancelOrder(id int64) (bool, error) {
 	client.writeOrderMsg <- req
 
 	// Read response
-	resp := <-client.readOrderMsg
+	var resp response
+	select {
+	case resp = <-client.readOrderMsg:
+	case <-time.After(3 * time.Second):
+		return false, fmt.Errorf("%s CancelOrder read timeout", client)
+	}
 
 	if resp[0].ErrorCode != 0 {
 		return false, fmt.Errorf("%s CancelOrder error code: %d", client, resp[0].ErrorCode)
@@ -313,11 +323,16 @@ func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
 	// Write to WebSocket
 	client.writeOrderMsg <- req
 
-	// Read response
-	resp := <-client.readOrderMsg
-
 	// Create order to be returned
 	var order exchange.Order
+
+	// Read response
+	var resp response
+	select {
+	case resp = <-client.readOrderMsg:
+	case <-time.After(3 * time.Second):
+		return order, fmt.Errorf("%s GetOrderStatus read timeout", client)
+	}
 
 	if resp[0].ErrorCode != 0 {
 		return order, fmt.Errorf("%s GetOrderStatus error code: %d", client, resp[0].ErrorCode)
@@ -402,7 +417,7 @@ func (client *Client) maintainWS(initMsg request, writeMsg <-chan request, readM
 	// Read from connection
 	go func() {
 		for {
-			(<-receiveWS).SetReadDeadline(time.Now().Add(pingInterval + time.Second))
+			(<-receiveWS).SetReadDeadline(time.Now().Add(pingInterval + 3*time.Second))
 			_, data, err := (<-receiveWS).ReadMessage()
 			if err != nil {
 				// Reconnect on error
@@ -462,7 +477,7 @@ func (client *Client) newWS(initMsg request) (*websocket.Conn, error) {
 
 	// Subscribe to channel if specified
 	if initMsg.Event != "" {
-		if err = ws.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		if err = ws.SetWriteDeadline(time.Now().Add(3 * time.Second)); err != nil {
 			return nil, err
 		}
 		if err = ws.WriteJSON(initMsg); err != nil {
