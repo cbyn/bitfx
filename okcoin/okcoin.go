@@ -248,6 +248,10 @@ func (client *Client) SendOrder(action, otype string, amount, price float64) (in
 		return 0, fmt.Errorf("%s SendOrder read timeout", client)
 	}
 
+	if len(resp) == 0 {
+		return 0, fmt.Errorf("%s SendOrder bad message", client)
+	}
+
 	if resp[0].ErrorCode != 0 {
 		return 0, fmt.Errorf("%s SendOrder error code: %d", client, resp[0].ErrorCode)
 	}
@@ -291,6 +295,10 @@ func (client *Client) CancelOrder(id int64) (bool, error) {
 		return false, fmt.Errorf("%s CancelOrder read timeout", client)
 	}
 
+	if len(resp) == 0 {
+		return false, fmt.Errorf("%s CancelOrder bad message", client)
+	}
+
 	if resp[0].ErrorCode != 0 {
 		return false, fmt.Errorf("%s CancelOrder error code: %d", client, resp[0].ErrorCode)
 	}
@@ -332,6 +340,10 @@ func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
 	case resp = <-client.readOrderMsg:
 	case <-time.After(3 * time.Second):
 		return order, fmt.Errorf("%s GetOrderStatus read timeout", client)
+	}
+
+	if len(resp) == 0 {
+		return order, fmt.Errorf("%s GetOrderStatus bad message", client)
 	}
 
 	if resp[0].ErrorCode != 0 {
