@@ -361,6 +361,10 @@ func (client *Client) GetOrderStatus(id int64) (exchange.Order, error) {
 		return order, fmt.Errorf("%s GetOrderStatus error: %s", client, err)
 	}
 
+	if len(orderData.Orders) == 0 {
+		return order, fmt.Errorf("%s GetOrderStatus no orders, received: %+v", client, resp)
+	}
+
 	// Determine order status
 	if orderData.Orders[0].Status == -1 || orderData.Orders[0].Status == 2 {
 		order.Status = "dead"
