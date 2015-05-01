@@ -1,16 +1,10 @@
 // Cryptocurrency arbitrage trading system
 
-// TODO:
-// Quit bitarb on repeated errors?
-// Backup FX data source
-// Use arb logic for best bid and ask?
-// Use websocket for orders
-// Auto margining on okcoin
-
 package main
 
 import (
 	"bitfx/bitfinex"
+	"bitfx/btcchina"
 	"bitfx/exchange"
 	"bitfx/forex"
 	"bitfx/okcoin"
@@ -92,10 +86,10 @@ func setLog() {
 // Initialize exchanges
 func setExchanges() {
 	exchanges = []exchange.Exchange{
-		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 2, 0.001, cfg.Sec.AvailShortBitfinex, cfg.Sec.AvailFundsBitfinex),
+		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.001, cfg.Sec.AvailShortBitfinex, cfg.Sec.AvailFundsBitfinex),
 		okcoin.New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.002, cfg.Sec.AvailShortOKusd, cfg.Sec.AvailFundsOKusd),
-		okcoin.New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), cfg.Sec.Symbol, "cny", 3, 0.000, cfg.Sec.AvailShortOKcny, cfg.Sec.AvailFundsOKcny),
-		// btcchina.New(os.Getenv("BTC_KEY"), os.Getenv("BTC_SECRET"), cfg.Sec.Symbol, "cny", 3, 0.000, cfg.Sec.AvailShortBTC, cfg.Sec.AvailFundsBTC),
+		okcoin.New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), cfg.Sec.Symbol, "cny", 1, 0.000, cfg.Sec.AvailShortOKcny, cfg.Sec.AvailFundsOKcny),
+		btcchina.New(os.Getenv("BTC_KEY"), os.Getenv("BTC_SECRET"), cfg.Sec.Symbol, "cny", 1, 0.000, cfg.Sec.AvailShortBTC, cfg.Sec.AvailFundsBTC),
 	}
 	for _, exg := range exchanges {
 		log.Printf("Using exchange %s with priority %d and fee of %.4f", exg, exg.Priority(), exg.Fee())
