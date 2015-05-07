@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Exchange methods for data and trading ***************************************
+// Exgchange defines methods for data and trading
 type Exchange interface {
 	// Implement Stringer interface
 	String() string
@@ -50,13 +50,13 @@ type Exchange interface {
 	Done()
 }
 
-// Order status data from the exchange *****************************************
+// Order defines the order status format
 type Order struct {
 	FilledAmount float64 // Positive number for buys and sells
 	Status       string  // "live" or "dead"
 }
 
-// Book data from the exchange *************************************************
+// Book defines the book data format
 type Book struct {
 	Exg   Exchange
 	Time  time.Time
@@ -65,13 +65,13 @@ type Book struct {
 	Error error
 }
 
-// BidItems data from the exchange
+// BidItems defines the inner book data format
 type BidItems []struct {
 	Price  float64
 	Amount float64
 }
 
-// AskItems data from the exchange
+// AskItems defines the inner book data format
 type AskItems []struct {
 	Price  float64
 	Amount float64
