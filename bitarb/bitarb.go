@@ -49,18 +49,18 @@ type filteredBook struct {
 	time     time.Time
 }
 type market struct {
-	exg                          exchange.Exchange
+	exg                          exchange.Interface
 	orderPrice, amount, adjPrice float64
 }
 
 // Global variables
 var (
-	logFile     os.File             // Log printed to file
-	cfg         Config              // Configuration struct
-	exchanges   []exchange.Exchange // Slice of exchanges in use
-	currencies  []string            // Slice of forein currencies in use
-	netPosition float64             // Net position accross exchanges
-	pl          float64             // Net P&L for current run
+	logFile     os.File              // Log printed to file
+	cfg         Config               // Configuration struct
+	exchanges   []exchange.Interface // Slice of exchanges in use
+	currencies  []string             // Slice of forein currencies in use
+	netPosition float64              // Net position accross exchanges
+	pl          float64              // Net P&L for current run
 )
 
 // Set config info
@@ -85,7 +85,7 @@ func setLog() {
 
 // Initialize exchanges
 func setExchanges() {
-	exchanges = []exchange.Exchange{
+	exchanges = []exchange.Interface{
 		bitfinex.New(os.Getenv("BITFINEX_KEY"), os.Getenv("BITFINEX_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.001, cfg.Sec.AvailShortBitfinex, cfg.Sec.AvailFundsBitfinex),
 		okcoin.New(os.Getenv("OKUSD_KEY"), os.Getenv("OKUSD_SECRET"), cfg.Sec.Symbol, "usd", 1, 0.002, cfg.Sec.AvailShortOKusd, cfg.Sec.AvailFundsOKusd),
 		okcoin.New(os.Getenv("OKCNY_KEY"), os.Getenv("OKCNY_SECRET"), cfg.Sec.Symbol, "cny", 1, 0.000, cfg.Sec.AvailShortOKcny, cfg.Sec.AvailFundsOKcny),
@@ -146,7 +146,7 @@ func main() {
 	go checkStdin(doneChan)
 
 	// Communicate data
-	requestBook := make(chan exchange.Exchange)
+	requestBook := make(chan exchange.Interface)
 	receiveBook := make(chan filteredBook)
 	newBook := make(chan bool)
 	go handleData(requestBook, receiveBook, newBook, doneChan)
@@ -168,7 +168,7 @@ func checkStdin(doneChan chan<- bool) {
 }
 
 // Handle all data communication
-func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filteredBook, newBook chan<- bool, doneChan <-chan bool) {
+func handleData(requestBook <-chan exchange.Interface, receiveBook chan<- filteredBook, newBook chan<- bool, doneChan <-chan bool) {
 	// Communicate forex
 	requestFX := make(chan string)
 	receiveFX := make(chan float64)
@@ -176,7 +176,7 @@ func handleData(requestBook <-chan exchange.Exchange, receiveBook chan<- filtere
 	go handleFX(requestFX, receiveFX, fxDoneChan)
 
 	// Filtered book data for each exchange
-	markets := make(map[exchange.Exchange]filteredBook)
+	markets := make(map[exchange.Interface]filteredBook)
 	// Channel to receive book data from exchanges
 	bookChan := make(chan exchange.Book)
 
@@ -293,16 +293,16 @@ func filterBook(book exchange.Book, fxPrice float64) filteredBook {
 }
 
 // Trade on net position exits and arb opportunities
-func considerTrade(requestBook chan<- exchange.Exchange, receiveBook <-chan filteredBook, newBook <-chan bool) {
+func considerTrade(requestBook chan<- exchange.Interface, receiveBook <-chan filteredBook, newBook <-chan bool) {
 	// Local data copy
-	var markets map[exchange.Exchange]filteredBook
+	var markets map[exchange.Interface]filteredBook
 	// For tracking last trade, to prevent false repeats on slow exchange updates
 	var lastArb, lastAmount float64
 
 	// Check for trade whenever new data is available
 	for _ = range newBook {
 		// Build local snapshot of latest data
-		markets = make(map[exchange.Exchange]filteredBook)
+		markets = make(map[exchange.Interface]filteredBook)
 		for _, exg := range exchanges {
 			requestBook <- exg
 			// Don't use stale data
@@ -361,7 +361,7 @@ func considerTrade(requestBook chan<- exchange.Exchange, receiveBook <-chan filt
 
 // Find best bid able to sell
 // Adjusts market amount according to exchange position
-func findBestBid(markets map[exchange.Exchange]filteredBook) market {
+func findBestBid(markets map[exchange.Interface]filteredBook) market {
 	var bestBid market
 
 	for exg, fb := range markets {
@@ -381,7 +381,7 @@ func findBestBid(markets map[exchange.Exchange]filteredBook) market {
 
 // Find best ask able to buy
 // Adjusts market amount according to exchange position
-func findBestAsk(markets map[exchange.Exchange]filteredBook) market {
+func findBestAsk(markets map[exchange.Interface]filteredBook) market {
 	var bestAsk market
 	// Need to start with a high number
 	bestAsk.adjPrice = math.MaxFloat64
@@ -404,7 +404,7 @@ func findBestAsk(markets map[exchange.Exchange]filteredBook) market {
 
 // Find best arbitrage opportunity
 // Adjusts market amounts according to exchange positions
-func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bool) {
+func findBestArb(markets map[exchange.Interface]filteredBook) (market, market, bool) {
 	var (
 		bestBid, bestAsk market
 		bestOpp          float64
@@ -439,7 +439,7 @@ func findBestArb(markets map[exchange.Exchange]filteredBook) (market, market, bo
 }
 
 // Calculate arb needed for a trade based on existing positions
-func calcNeededArb(buyExg, sellExg exchange.Exchange) float64 {
+func calcNeededArb(buyExg, sellExg exchange.Interface) float64 {
 	// Middle between min and max
 	center := (cfg.Sec.MaxArb + cfg.Sec.MinArb) / 2
 	// Half distance from center to min and max
@@ -496,7 +496,7 @@ func updatePL(price, amount float64, action string) {
 }
 
 // Handle communication for a FOK order
-func fillOrKill(exg exchange.Exchange, action string, amount, price float64, fillChan chan<- float64) {
+func fillOrKill(exg exchange.Interface, action string, amount, price float64, fillChan chan<- float64) {
 	var (
 		id    int64
 		err   error

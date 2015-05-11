@@ -200,7 +200,7 @@ func TestFilterBook(t *testing.T) {
 }
 
 func TestFindBestBid(t *testing.T) {
-	markets := make(map[exchange.Exchange]filteredBook)
+	markets := make(map[exchange.Interface]filteredBook)
 	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
 	exg1.SetMaxPos(500)
 	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
@@ -224,7 +224,7 @@ func TestFindBestBid(t *testing.T) {
 }
 
 func TestFindBestAsk(t *testing.T) {
-	markets := make(map[exchange.Exchange]filteredBook)
+	markets := make(map[exchange.Interface]filteredBook)
 	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
 	exg1.SetMaxPos(500)
 	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
@@ -249,7 +249,7 @@ func TestFindBestAsk(t *testing.T) {
 
 func TestFindBestArb(t *testing.T) {
 	// No opportunity
-	markets := make(map[exchange.Exchange]filteredBook)
+	markets := make(map[exchange.Interface]filteredBook)
 	exg1 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)
 	exg1.SetMaxPos(500)
 	exg2 := okcoin.New("", "", "", "usd", 1, 0.002, 500, 0)

@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// Exgchange defines methods for data and trading
-type Exchange interface {
+// Interface defines exchange methods for data and trading
+type Interface interface {
 	// Implement Stringer interface
 	String() string
 	// Return exchange priority for order execution
@@ -58,7 +58,7 @@ type Order struct {
 
 // Book defines the book data format
 type Book struct {
-	Exg   Exchange
+	Exg   Interface
 	Time  time.Time
 	Bids  BidItems // Sort by price high to low
 	Asks  AskItems // Sort by price low to high
